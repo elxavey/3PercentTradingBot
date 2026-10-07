@@ -3,8 +3,14 @@
 MEXICO_TICKERS = [
     "ALSEA.MX",
     "WALMEX.MX",
-    "TLEVISA-CPO.MX",
+    "TLEVISACPO.MX",
     "GMEXICOB.MX",
+    "FEMSAUBD.MX",
+    "CEMEXCPO.MX",
+    "GFNORTEO.MX",
+    "BIMBOA.MX",
+    "GAPB.MX",
+    "ASURB.MX",
 ]
 
 USA_TICKERS = [
@@ -42,4 +48,21 @@ RULES_TECHNICAL = {
     "rel_volume_surge": {"min_multiplier": 1.5, "enabled": True},
     "golden_cross":     {"lookback_days": 90, "enabled": True},
     "death_cross":      {"lookback_days": 90, "enabled": False},
+}
+
+# Quality Gate v0.1 — eligibility only, not an entry signal.
+# Initial research thresholds; these will be validated and tuned with backtests.
+QUALITY_GATE = {
+    "MX": {
+        "min_price": 5.0,
+        "min_market_cap": 10_000_000_000,       # MXN
+        "min_avg_traded_value": 5_000_000,      # MXN/day, 20-session average
+        "min_history_days": 252,
+    },
+    "US": {
+        "min_price": 5.0,
+        "min_market_cap": 2_000_000_000,        # USD
+        "min_avg_traded_value": 10_000_000,     # USD/day, 20-session average
+        "min_history_days": 252,
+    },
 }
