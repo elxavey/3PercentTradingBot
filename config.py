@@ -1,3 +1,6 @@
+APP_VERSION = "0.2.0"
+APP_BUILD = "Quality Gate + Opportunity Score v0.1"
+
 # Initial universe for the 3% Trading Bot scanner.
 # Yahoo Finance uses the .MX suffix for Bolsa Mexicana de Valores symbols.
 MEXICO_TICKERS = [
@@ -64,5 +67,30 @@ QUALITY_GATE = {
         "min_market_cap": 2_000_000_000,        # USD
         "min_avg_traded_value": 10_000_000,     # USD/day, 20-session average
         "min_history_days": 252,
+    },
+}
+
+# Opportunity Score v0.1 — ranking only. Weights are explicit so they can
+# later be validated/optimized with backtesting rather than guessed silently.
+OPPORTUNITY_SCORE = {
+    "weights": {
+        "trend": 30,
+        "rsi": 25,
+        "rvol": 20,
+        "atr": 25,
+    },
+    "rsi": {
+        "ideal_min": 50,
+        "ideal_max": 65,
+        "extended_max": 75,
+    },
+    "rvol": {
+        "strong": 1.5,
+        "normal": 1.0,
+    },
+    "atr_pct": {
+        "ideal_min": 2.0,
+        "ideal_max": 4.5,
+        "minimum": 1.0,
     },
 }
