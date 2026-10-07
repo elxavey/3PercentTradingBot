@@ -1,3 +1,5 @@
+> **3% Trading Bot v1.0 plan:** [Project objectives, architecture, GBM recommendations and development roadmap](docs/PROJECT_ROADMAP.md). The current v0.4.0 code is a research screener; paper trading and GBM suggestions are planned, not yet implemented.
+
 # Stock Screener
 
 A Python-based stock and ETF screening tool with a Streamlit web UI. Screen stocks against a configurable set of fundamental and technical rules, adjust thresholds in real time, and export results to CSV — no paid API required.
