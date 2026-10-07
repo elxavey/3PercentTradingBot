@@ -1,13 +1,22 @@
-TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-    "TSLA", "NVDA", "JPM", "JNJ", "V",
-    "UNH", "PG", "HD", "MA", "BAC",
-    "SNDK", "SNAP", "NKE", "CRWV", "CAG",
-    "KMB", "LULU", "MSTR",
+# Initial universe for the 3% Trading Bot scanner.
+# Yahoo Finance uses the .MX suffix for Bolsa Mexicana de Valores symbols.
+MEXICO_TICKERS = [
+    "ALSEA.MX",
+    "WALMEX.MX",
+    "TLEVISA-CPO.MX",
+    "GMEXICOB.MX",
 ]
 
-ETF_TICKERS = ["SPY", "QQQ", "VTI", "SCHD", "XLE", "GLD", "USO",
+USA_TICKERS = [
+    "AAPL",
+    "AMZN",
 ]
+
+TICKERS = MEXICO_TICKERS + USA_TICKERS
+
+# ETFs are not part of the first 3% strategy universe.
+# The original ETF engine is preserved and can be enabled later.
+ETF_TICKERS = []
 
 PASS_THRESHOLD = 0.80
 ETF_PASS_THRESHOLD = 0.80
@@ -15,7 +24,7 @@ ETF_PASS_THRESHOLD = 0.80
 RULES_FUNDAMENTAL = {
     "pe_ratio":  {"max": 25,   "enabled": True},
     "pb_ratio":  {"max": 2,    "enabled": True},
-    "peg_ratio": {"max": 1.0,    "enabled": True},
+    "peg_ratio": {"max": 1.0,  "enabled": True},
     "fcf_yield": {"min": 0.03, "enabled": True},
     "de_ratio":  {"max": 1,    "enabled": True},
 }
@@ -32,5 +41,5 @@ RULES_TECHNICAL = {
     "ma_confluence":    {"enabled": True},
     "rel_volume_surge": {"min_multiplier": 1.5, "enabled": True},
     "golden_cross":     {"lookback_days": 90, "enabled": True},
-    "death_cross":      {"lookback_days": 90, "enabled": False},  # disabled by default — bearish signal
+    "death_cross":      {"lookback_days": 90, "enabled": False},
 }
