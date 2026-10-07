@@ -23,3 +23,9 @@ __pycache__/
 screener_results.csv
 # Local market/fundamentals cache
 .cache/
+
+# Local TradePilot operational database (never commit portfolio data)
+data/
+*.db
+*.db-wal
+*.db-shm
