@@ -21,3 +21,5 @@ __pycache__/
 
 # Screener output files
 screener_results.csv
+# Local market/fundamentals cache
+.cache/
