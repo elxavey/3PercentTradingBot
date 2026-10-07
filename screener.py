@@ -7,6 +7,7 @@ from data_fetcher import get_fundamentals, get_price_history
 from fundamental_rules import run_fundamental_checks, get_fundamental_values
 from technical_rules import run_technical_checks, get_technical_values, get_scanner_metrics
 from quality_gate import evaluate_quality_gate
+from opportunity_score import calculate_opportunity_score
 
 
 def score_stock(
@@ -44,6 +45,7 @@ def score_stock(
         if fundamentals is None:
             return None
         quality_gate = evaluate_quality_gate(ticker, fundamentals, price_history)
+        opportunity = calculate_opportunity_score(scanner_metrics, quality_gate["passed"])
         fundamental_results = run_fundamental_checks(fundamentals, fund_rules)
         fundamental_values  = get_fundamental_values(fundamentals, fund_rules)
         all_results         = {**fundamental_results, **technical_results}
@@ -72,6 +74,7 @@ def score_stock(
         "atr_pct":      scanner_metrics["atr_pct"],
         "trend":        scanner_metrics["trend"],
         "quality_gate": quality_gate if not etf_mode else None,
+        "opportunity": opportunity if not etf_mode else None,
     }
 
 
