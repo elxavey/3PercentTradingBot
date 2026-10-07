@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from time import perf_counter
 from screener import score_stock
 from config import (
     TICKERS, ETF_TICKERS,
@@ -148,6 +149,7 @@ if not run:
     st.stop()
 
 results = []
+scan_started = perf_counter()
 all_tickers_list = [(t, False) for t in tickers] + [(t, True) for t in etf_tickers]
 progress = st.progress(0, text="Starting...")
 
@@ -164,6 +166,7 @@ for i, (ticker, is_etf) in enumerate(all_tickers_list):
         results.append(result)
 
 progress.empty()
+scan_seconds = perf_counter() - scan_started
 results.sort(key=lambda x: (x.get("opportunity") or {}).get("score", 0), reverse=True)
 
 if not results:
@@ -177,11 +180,28 @@ failed = [r for r in results if not r["passed"]]
 quality_passed = [r for r in results if r.get("quality_gate") and r["quality_gate"]["passed"]]
 quality_failed = [r for r in results if r.get("quality_gate") and not r["quality_gate"]["passed"]]
 
+metadata_seconds = sum((r.get("timing") or {}).get("metadata_seconds", 0) for r in results)
+history_seconds = sum((r.get("timing") or {}).get("history_seconds", 0) for r in results)
+avg_symbol_seconds = scan_seconds / len(results) if results else 0
+
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Screened", len(results))
 col2.metric("Quality Gate", len(quality_passed))
-col3.metric("Legacy Passed", len(passed))
-col4.metric("Legacy Failed", len(failed))
+col3.metric("Scan Time", f"{scan_seconds:.1f}s")
+col4.metric("Avg / Symbol", f"{avg_symbol_seconds:.2f}s")
+
+with st.expander("⏱️ Execution telemetry"):
+    t1, t2, t3 = st.columns(3)
+    t1.metric("Historical data", f"{history_seconds:.1f}s")
+    t2.metric("Metadata / fundamentals", f"{metadata_seconds:.1f}s")
+    t3.metric("Other processing", f"{max(scan_seconds - history_seconds - metadata_seconds, 0):.1f}s")
+    timing_rows = [{
+        "Ticker": r["ticker"],
+        "History (s)": (r.get("timing") or {}).get("history_seconds", 0),
+        "Metadata (s)": (r.get("timing") or {}).get("metadata_seconds", 0),
+        "Total (s)": (r.get("timing") or {}).get("total_seconds", 0),
+    } for r in sorted(results, key=lambda x: (x.get("timing") or {}).get("total_seconds", 0), reverse=True)]
+    st.dataframe(pd.DataFrame(timing_rows), use_container_width=True, hide_index=True)
 
 st.divider()
 
