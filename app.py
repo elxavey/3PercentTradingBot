@@ -6,8 +6,9 @@ from config import (
     TICKERS, ETF_TICKERS,
     RULES_FUNDAMENTAL, RULES_TECHNICAL,
     PASS_THRESHOLD, ETF_PASS_THRESHOLD,
-    APP_VERSION, APP_BUILD, UNIVERSES,
+    APP_VERSION, APP_BUILD, UNIVERSES, DYNAMIC_UNIVERSES,
 )
+from universe_discovery import discover_dynamic_universe
 from universe_manager import run_universe_pre_screen
 
 st.set_page_config(page_title="3% Trading Bot", page_icon="📈", layout="wide")
@@ -24,13 +25,23 @@ with st.sidebar:
     st.header("Scanner Configuration")
 
     st.subheader("Market Universe")
-    universe_mode = st.selectbox("Universe", list(UNIVERSES.keys()))
-    selected_universe = UNIVERSES[universe_mode]
-    st.caption(f"{len(selected_universe)} symbols in selected universe")
-    stock_input = st.text_area("Symbols (editable)", value=", ".join(selected_universe), height=100)
+    universe_options = list(UNIVERSES.keys()) + list(DYNAMIC_UNIVERSES.keys())
+    universe_mode = st.selectbox("Universe", universe_options)
+    is_dynamic_universe = universe_mode in DYNAMIC_UNIVERSES
+
+    if is_dynamic_universe:
+        target_size = DYNAMIC_UNIVERSES[universe_mode]
+        st.caption(f"Discovers up to {target_size:,} liquid MX + USA equities at run time")
+        stock_input = ""
+        tickers = []
+    else:
+        selected_universe = UNIVERSES[universe_mode]
+        st.caption(f"{len(selected_universe)} symbols in selected universe")
+        stock_input = st.text_area("Symbols (editable)", value=", ".join(selected_universe), height=100)
+        tickers = [t.strip().upper() for t in stock_input.split(",") if t.strip()]
+
     etf_input   = st.text_area("ETFs (optional)", value=", ".join(ETF_TICKERS), height=60)
-    tickers     = [t.strip().upper() for t in stock_input.split(",") if t.strip()]
-    etf_tickers = [t.strip().upper() for t in etf_input.split(",")   if t.strip()]
+    etf_tickers = [t.strip().upper() for t in etf_input.split(",") if t.strip()]
 
     st.divider()
 
@@ -154,6 +165,20 @@ if not run:
 
 results = []
 scan_started = perf_counter()
+discovery_result = None
+
+if is_dynamic_universe:
+    with st.spinner(f"Discovering {target_size:,} MX + USA equities from Yahoo Finance..."):
+        discovery_result = discover_dynamic_universe(target_size)
+    tickers = discovery_result["symbols"]
+    if not tickers:
+        st.error("Dynamic universe discovery returned no symbols. Try again or use a static universe.")
+        st.stop()
+    st.caption(
+        f"Dynamic universe: {discovery_result['discovered']:,} discovered "
+        f"({discovery_result['mx']} MX / {discovery_result['us']} USA) "
+        f"in {discovery_result['seconds']:.1f}s"
+    )
 
 universe_progress = st.progress(0, text="Pre-screening market universe...")
 def update_universe_progress(done, total, ticker):
@@ -209,12 +234,17 @@ col4.metric("Total Time", f"{scan_seconds:.1f}s")
 col5.metric("Avg / Analyzed", f"{avg_symbol_seconds:.2f}s")
 
 with st.expander("⏱️ Execution telemetry"):
-    t1, t2, t3, t4, t5 = st.columns(5)
-    t1.metric("Universe pre-screen", f"{universe_result['seconds']:.1f}s")
-    t2.metric("History reused", f"{history_reused}/{len(results)}")
-    t3.metric("Metadata", f"{metadata_seconds:.1f}s")
-    t4.metric("Metadata cache", f"{metadata_cache_hits}/{len(results)}")
-    t5.metric("Other processing", f"{max(scan_seconds - universe_result['seconds'] - history_seconds - metadata_seconds, 0):.1f}s")
+    t1, t2, t3, t4, t5, t6 = st.columns(6)
+    t1.metric("Discovery", f"{(discovery_result or {}).get('seconds', 0):.1f}s")
+    t2.metric("Pre-screen", f"{universe_result['seconds']:.1f}s")
+    t3.metric("History cache", f"{universe_result.get('history_cache_hits', 0)}/{universe_result['total']}")
+    t4.metric("History reused", f"{history_reused}/{len(results)}")
+    t5.metric("Metadata cache", f"{metadata_cache_hits}/{len(results)}")
+    t6.metric("Metadata", f"{metadata_seconds:.1f}s")
+    st.caption(
+        f"Other processing: "
+        f"{max(scan_seconds - universe_result['seconds'] - (discovery_result or {}).get('seconds', 0) - history_seconds - metadata_seconds, 0):.1f}s"
+    )
     timing_rows = [{
         "Ticker": r["ticker"],
         "History (s)": (r.get("timing") or {}).get("history_seconds", 0),
