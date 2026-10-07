@@ -168,12 +168,37 @@ if not results:
 passed = [r for r in results if r["passed"]]
 failed = [r for r in results if not r["passed"]]
 
-col1, col2, col3 = st.columns(3)
+quality_passed = [r for r in results if r.get("quality_gate") and r["quality_gate"]["passed"]]
+quality_failed = [r for r in results if r.get("quality_gate") and not r["quality_gate"]["passed"]]
+
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Screened", len(results))
-col2.metric("Passed",   len(passed))
-col3.metric("Failed",   len(failed))
+col2.metric("Quality Gate", len(quality_passed))
+col3.metric("Legacy Passed", len(passed))
+col4.metric("Legacy Failed", len(failed))
 
 st.divider()
+
+st.subheader("🛡️ Quality Gate v0.1")
+st.caption("Eligibility filter only — PASS is not a buy signal. Thresholds are initial research values and will be validated by backtesting.")
+if quality_passed:
+    st.dataframe(build_table(quality_passed) if "build_table" in globals() else pd.DataFrame([{
+        "Ticker": r["ticker"],
+        "Market": r["quality_gate"]["market"],
+        "Market Cap": r["quality_gate"]["market_cap"],
+        "Avg Traded Value (20d)": round(r["quality_gate"]["avg_traded_value"], 0),
+        "History Days": r["quality_gate"]["history_days"],
+        "Quality": "PASS",
+    } for r in quality_passed]), use_container_width=True, hide_index=True)
+if quality_failed:
+    with st.expander(f"Quality Gate exclusions ({len(quality_failed)})"):
+        st.dataframe(pd.DataFrame([{
+            "Ticker": r["ticker"],
+            "Failed Checks": ", ".join(k for k, ok in r["quality_gate"]["checks"].items() if not ok),
+            "Market Cap": r["quality_gate"]["market_cap"],
+            "Avg Traded Value (20d)": round(r["quality_gate"]["avg_traded_value"], 0),
+            "History Days": r["quality_gate"]["history_days"],
+        } for r in quality_failed]), use_container_width=True, hide_index=True)
 
 # ── Results table + expanders ─────────────────────────────────────────────────
 def build_table(result_list):
@@ -188,6 +213,7 @@ def build_table(result_list):
             "RVOL":    f"{r['rvol']:.2f}x" if r.get("rvol") is not None else "N/A",
             "ATR%":    f"{r['atr_pct']:.2f}%" if r.get("atr_pct") is not None else "N/A",
             "Trend":   r.get("trend", "N/A"),
+            "Quality": "PASS" if r.get("quality_gate") and r["quality_gate"]["passed"] else "FAIL",
             "Score":   f"{r['score']*100:.0f}%",
             "Rules":   f"{r['rules_passed']}/{r['total_rules']}",
         })
