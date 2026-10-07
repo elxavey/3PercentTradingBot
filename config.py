@@ -1,5 +1,5 @@
-APP_VERSION = "0.3.0"
-APP_BUILD = "Universe Manager v0.1"
+APP_VERSION = "0.3.1"
+APP_BUILD = "Data Pipeline Optimization + Cache"
 
 # Initial universe for the 3% Trading Bot scanner.
 # Yahoo Finance uses the .MX suffix for Bolsa Mexicana de Valores symbols.
