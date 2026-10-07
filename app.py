@@ -5,10 +5,16 @@ from config import (
     TICKERS, ETF_TICKERS,
     RULES_FUNDAMENTAL, RULES_TECHNICAL,
     PASS_THRESHOLD, ETF_PASS_THRESHOLD,
+    APP_VERSION, APP_BUILD,
 )
 
 st.set_page_config(page_title="3% Trading Bot", page_icon="📈", layout="wide")
-st.title("📈 3% Trading Bot")
+title_col, version_col = st.columns([5, 2])
+with title_col:
+    st.title("📈 3% Trading Bot")
+with version_col:
+    st.markdown(f"### 🟢 v{APP_VERSION}")
+    st.caption(f"development · {APP_BUILD}")
 st.caption("MX + USA opportunity scanner — research mode only; no orders are sent to a broker.")
 
 #Sidebar
@@ -158,7 +164,7 @@ for i, (ticker, is_etf) in enumerate(all_tickers_list):
         results.append(result)
 
 progress.empty()
-results.sort(key=lambda x: x["score"], reverse=True)
+results.sort(key=lambda x: (x.get("opportunity") or {}).get("score", 0), reverse=True)
 
 if not results:
     st.warning("No results returned. Check your tickers.")
@@ -214,10 +220,22 @@ def build_table(result_list):
             "ATR%":    f"{r['atr_pct']:.2f}%" if r.get("atr_pct") is not None else "N/A",
             "Trend":   r.get("trend", "N/A"),
             "Quality": "PASS" if r.get("quality_gate") and r["quality_gate"]["passed"] else "FAIL",
-            "Score":   f"{r['score']*100:.0f}%",
+            "Opportunity": f"{(r.get('opportunity') or {}).get('score', 0):.1f}",
+            "Legacy Score":   f"{r['score']*100:.0f}%",
             "Rules":   f"{r['rules_passed']}/{r['total_rules']}",
         })
     return pd.DataFrame(rows)
+
+eligible_ranked = sorted(
+    quality_passed,
+    key=lambda r: (r.get("opportunity") or {}).get("score", 0),
+    reverse=True,
+)
+if eligible_ranked:
+    st.subheader("🎯 Opportunity Ranking v0.1")
+    st.caption("Experimental ranking of Quality Gate stocks. This is not a buy signal; weights will be validated by backtesting.")
+    st.dataframe(build_table(eligible_ranked), use_container_width=True, hide_index=True)
+    st.divider()
 
 if passed:
     st.subheader(f"✅ Watchlist ({len(passed)} stocks)")
