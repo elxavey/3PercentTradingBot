@@ -162,6 +162,7 @@ def update_universe_progress(done, total, ticker):
 universe_result = run_universe_pre_screen(tickers, update_universe_progress)
 universe_progress.empty()
 screen_tickers = [r["ticker"] for r in universe_result["passed"]]
+pre_screen_history = {r["ticker"]: r["history"] for r in universe_result["passed"]}
 
 all_tickers_list = [(t, False) for t in screen_tickers] + [(t, True) for t in etf_tickers]
 progress = st.progress(0, text="Running full analysis...")
@@ -174,6 +175,7 @@ for i, (ticker, is_etf) in enumerate(all_tickers_list):
         fund_rules=runtime_fundamental,
         tech_rules=runtime_technical,
         threshold=etf_pass_pct / 100 if is_etf else pass_pct / 100,
+        price_history=None if is_etf else pre_screen_history.get(ticker),
     )
     if result:
         results.append(result)
@@ -194,6 +196,8 @@ quality_passed = [r for r in results if r.get("quality_gate") and r["quality_gat
 quality_failed = [r for r in results if r.get("quality_gate") and not r["quality_gate"]["passed"]]
 
 metadata_seconds = sum((r.get("timing") or {}).get("metadata_seconds", 0) for r in results)
+metadata_cache_hits = sum(1 for r in results if (r.get("timing") or {}).get("metadata_cache_hit"))
+history_reused = sum(1 for r in results if (r.get("timing") or {}).get("history_reused"))
 history_seconds = sum((r.get("timing") or {}).get("history_seconds", 0) for r in results)
 avg_symbol_seconds = scan_seconds / len(results) if results else 0
 
@@ -205,15 +209,18 @@ col4.metric("Total Time", f"{scan_seconds:.1f}s")
 col5.metric("Avg / Analyzed", f"{avg_symbol_seconds:.2f}s")
 
 with st.expander("⏱️ Execution telemetry"):
-    t1, t2, t3, t4 = st.columns(4)
+    t1, t2, t3, t4, t5 = st.columns(5)
     t1.metric("Universe pre-screen", f"{universe_result['seconds']:.1f}s")
-    t2.metric("Full historical data", f"{history_seconds:.1f}s")
-    t3.metric("Metadata / fundamentals", f"{metadata_seconds:.1f}s")
-    t4.metric("Other processing", f"{max(scan_seconds - universe_result['seconds'] - history_seconds - metadata_seconds, 0):.1f}s")
+    t2.metric("History reused", f"{history_reused}/{len(results)}")
+    t3.metric("Metadata", f"{metadata_seconds:.1f}s")
+    t4.metric("Metadata cache", f"{metadata_cache_hits}/{len(results)}")
+    t5.metric("Other processing", f"{max(scan_seconds - universe_result['seconds'] - history_seconds - metadata_seconds, 0):.1f}s")
     timing_rows = [{
         "Ticker": r["ticker"],
         "History (s)": (r.get("timing") or {}).get("history_seconds", 0),
         "Metadata (s)": (r.get("timing") or {}).get("metadata_seconds", 0),
+        "Metadata Cache": "HIT" if (r.get("timing") or {}).get("metadata_cache_hit") else "MISS",
+        "History Reused": "YES" if (r.get("timing") or {}).get("history_reused") else "NO",
         "Total (s)": (r.get("timing") or {}).get("total_seconds", 0),
     } for r in sorted(results, key=lambda x: (x.get("timing") or {}).get("total_seconds", 0), reverse=True)]
     st.dataframe(pd.DataFrame(timing_rows), use_container_width=True, hide_index=True)
