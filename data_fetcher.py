@@ -9,6 +9,8 @@ import yfinance as yf
 CACHE_DIR = Path(".cache")
 FUNDAMENTALS_CACHE_FILE = CACHE_DIR / "fundamentals.json"
 FUNDAMENTALS_TTL_HOURS = 24
+HISTORY_CACHE_DIR = CACHE_DIR / "history"
+HISTORY_TTL_HOURS = 6
 
 
 def _load_fundamentals_cache() -> dict:
@@ -88,14 +90,49 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[dict | N
         }
 
 
-def get_price_history(ticker: str, period: str = "2y") -> pd.DataFrame | None:
+def _history_cache_path(ticker: str) -> Path:
+    safe_ticker = ticker.replace("/", "_").replace("\\", "_")
+    return HISTORY_CACHE_DIR / f"{safe_ticker}.csv"
+
+
+def _history_cache_is_fresh(path: Path) -> bool:
+    if not path.exists():
+        return False
+    modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    return datetime.now(timezone.utc) - modified < timedelta(hours=HISTORY_TTL_HOURS)
+
+
+def get_price_history(
+    ticker: str,
+    period: str = "2y",
+    force_refresh: bool = False,
+    return_timing: bool = False,
+):
+    started = perf_counter()
+    cache_path = _history_cache_path(ticker)
+
+    if not force_refresh and _history_cache_is_fresh(cache_path):
+        try:
+            df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
+            if not df.empty:
+                timing = {"cache_hit": True, "seconds": round(perf_counter() - started, 3)}
+                return (df, timing) if return_timing else df
+        except (OSError, ValueError, pd.errors.ParserError):
+            pass
+
     try:
         stock = yf.Ticker(ticker)
         df = stock.history(period=period)
         if df.empty:
             print(f"  [!] No price history for {ticker}")
-            return None
-        return df
+            timing = {"cache_hit": False, "seconds": round(perf_counter() - started, 3)}
+            return (None, timing) if return_timing else None
+
+        HISTORY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        df.to_csv(cache_path)
+        timing = {"cache_hit": False, "seconds": round(perf_counter() - started, 3)}
+        return (df, timing) if return_timing else df
     except Exception as e:
         print(f"  [!] Could not fetch price history for {ticker}: {e}")
-        return None
+        timing = {"cache_hit": False, "seconds": round(perf_counter() - started, 3)}
+        return (None, timing) if return_timing else None
