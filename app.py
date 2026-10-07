@@ -6,8 +6,9 @@ from config import (
     TICKERS, ETF_TICKERS,
     RULES_FUNDAMENTAL, RULES_TECHNICAL,
     PASS_THRESHOLD, ETF_PASS_THRESHOLD,
-    APP_VERSION, APP_BUILD,
+    APP_VERSION, APP_BUILD, UNIVERSES,
 )
+from universe_manager import run_universe_pre_screen
 
 st.set_page_config(page_title="3% Trading Bot", page_icon="📈", layout="wide")
 title_col, version_col = st.columns([5, 2])
@@ -22,8 +23,11 @@ st.caption("MX + USA opportunity scanner — research mode only; no orders are s
 with st.sidebar:
     st.header("Scanner Configuration")
 
-    st.subheader("Tickers")
-    stock_input = st.text_area("MX + USA stocks (comma-separated)", value=", ".join(TICKERS), height=100)
+    st.subheader("Market Universe")
+    universe_mode = st.selectbox("Universe", list(UNIVERSES.keys()))
+    selected_universe = UNIVERSES[universe_mode]
+    st.caption(f"{len(selected_universe)} symbols in selected universe")
+    stock_input = st.text_area("Symbols (editable)", value=", ".join(selected_universe), height=100)
     etf_input   = st.text_area("ETFs (optional)", value=", ".join(ETF_TICKERS), height=60)
     tickers     = [t.strip().upper() for t in stock_input.split(",") if t.strip()]
     etf_tickers = [t.strip().upper() for t in etf_input.split(",")   if t.strip()]
@@ -150,8 +154,17 @@ if not run:
 
 results = []
 scan_started = perf_counter()
-all_tickers_list = [(t, False) for t in tickers] + [(t, True) for t in etf_tickers]
-progress = st.progress(0, text="Starting...")
+
+universe_progress = st.progress(0, text="Pre-screening market universe...")
+def update_universe_progress(done, total, ticker):
+    universe_progress.progress(done / total, text=f"Pre-screening {ticker}...")
+
+universe_result = run_universe_pre_screen(tickers, update_universe_progress)
+universe_progress.empty()
+screen_tickers = [r["ticker"] for r in universe_result["passed"]]
+
+all_tickers_list = [(t, False) for t in screen_tickers] + [(t, True) for t in etf_tickers]
+progress = st.progress(0, text="Running full analysis...")
 
 for i, (ticker, is_etf) in enumerate(all_tickers_list):
     progress.progress((i + 1) / len(all_tickers_list), text=f"Analyzing {ticker}...")
@@ -184,17 +197,19 @@ metadata_seconds = sum((r.get("timing") or {}).get("metadata_seconds", 0) for r 
 history_seconds = sum((r.get("timing") or {}).get("history_seconds", 0) for r in results)
 avg_symbol_seconds = scan_seconds / len(results) if results else 0
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Screened", len(results))
-col2.metric("Quality Gate", len(quality_passed))
-col3.metric("Scan Time", f"{scan_seconds:.1f}s")
-col4.metric("Avg / Symbol", f"{avg_symbol_seconds:.2f}s")
+col1, col2, col3, col4, col5 = st.columns(5)
+col1.metric("Universe", universe_result["total"])
+col2.metric("Pre-Screen", len(universe_result["passed"]))
+col3.metric("Quality Gate", len(quality_passed))
+col4.metric("Total Time", f"{scan_seconds:.1f}s")
+col5.metric("Avg / Analyzed", f"{avg_symbol_seconds:.2f}s")
 
 with st.expander("⏱️ Execution telemetry"):
-    t1, t2, t3 = st.columns(3)
-    t1.metric("Historical data", f"{history_seconds:.1f}s")
-    t2.metric("Metadata / fundamentals", f"{metadata_seconds:.1f}s")
-    t3.metric("Other processing", f"{max(scan_seconds - history_seconds - metadata_seconds, 0):.1f}s")
+    t1, t2, t3, t4 = st.columns(4)
+    t1.metric("Universe pre-screen", f"{universe_result['seconds']:.1f}s")
+    t2.metric("Full historical data", f"{history_seconds:.1f}s")
+    t3.metric("Metadata / fundamentals", f"{metadata_seconds:.1f}s")
+    t4.metric("Other processing", f"{max(scan_seconds - universe_result['seconds'] - history_seconds - metadata_seconds, 0):.1f}s")
     timing_rows = [{
         "Ticker": r["ticker"],
         "History (s)": (r.get("timing") or {}).get("history_seconds", 0),
