@@ -151,6 +151,45 @@ def check_rel_volume_surge(df: pd.DataFrame, rules: dict) -> bool:
     return (today_vol / avg_vol) >= rule["min_multiplier"]
 
 
+
+def get_scanner_metrics(df: pd.DataFrame) -> dict:
+    """Return current scanner metrics without applying strategy thresholds."""
+    close = df["Close"]
+    volume = df["Volume"]
+
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+
+    avg_volume = volume.iloc[-21:-1].mean()
+    rvol = float(volume.iloc[-1] / avg_volume) if avg_volume and avg_volume > 0 else None
+
+    prev_close = close.shift(1)
+    true_range = pd.concat([
+        df["High"] - df["Low"],
+        (df["High"] - prev_close).abs(),
+        (df["Low"] - prev_close).abs(),
+    ], axis=1).max(axis=1)
+    atr = true_range.rolling(window=14).mean().iloc[-1]
+    price = float(close.iloc[-1])
+    atr_pct = float((atr / price) * 100) if price > 0 and pd.notna(atr) else None
+
+    sma50 = close.rolling(window=50).mean().iloc[-1]
+    sma200 = close.rolling(window=200).mean().iloc[-1]
+    trend = "Bullish" if pd.notna(sma50) and pd.notna(sma200) and price > sma50 > sma200 else "Neutral/Bearish"
+
+    return {
+        "rsi": round(float(rsi.iloc[-1]), 2) if pd.notna(rsi.iloc[-1]) else None,
+        "rvol": round(rvol, 2) if rvol is not None else None,
+        "atr_pct": round(atr_pct, 2) if atr_pct is not None else None,
+        "trend": trend,
+    }
+
+
 def run_technical_checks(df: pd.DataFrame, rules: dict = None) -> dict:
     if rules is None:
         rules = DEFAULT_RULES
