@@ -1,5 +1,5 @@
-APP_VERSION = "0.2.1"
-APP_BUILD = "Execution telemetry + Opportunity Score v0.1"
+APP_VERSION = "0.3.0"
+APP_BUILD = "Universe Manager v0.1"
 
 # Initial universe for the 3% Trading Bot scanner.
 # Yahoo Finance uses the .MX suffix for Bolsa Mexicana de Valores symbols.
@@ -22,6 +22,25 @@ USA_TICKERS = [
 ]
 
 TICKERS = MEXICO_TICKERS + USA_TICKERS
+
+BROAD_US_TICKERS = [
+    "MSFT", "GOOGL", "META", "NVDA", "TSLA", "JPM", "V", "MA", "HD", "COST",
+    "NFLX", "AMD", "AVGO", "ORCL", "CRM", "ADBE", "QCOM", "TXN", "INTC", "IBM",
+    "KO", "PEP", "MCD", "SBUX", "NKE", "DIS", "WMT", "TGT", "LOW", "CAT",
+    "BA", "GE", "HON", "UPS", "FDX", "XOM", "CVX", "COP", "SLB", "JNJ",
+    "PFE", "MRK", "ABBV", "LLY", "UNH", "BAC", "GS", "MS", "AXP", "PYPL",
+]
+
+UNIVERSES = {
+    "Test - 12 symbols": TICKERS,
+    "Broad MX + USA - 62 symbols": TICKERS + BROAD_US_TICKERS,
+}
+
+UNIVERSE_PRE_SCREEN = {
+    "min_price": 5.0,
+    "min_history_days": 252,
+    "min_avg_traded_value": 5_000_000,
+}
 
 # ETFs are not part of the first 3% strategy universe.
 # The original ETF engine is preserved and can be enabled later.
