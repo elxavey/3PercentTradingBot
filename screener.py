@@ -5,7 +5,7 @@ from config import (
 )
 from data_fetcher import get_fundamentals, get_price_history
 from fundamental_rules import run_fundamental_checks, get_fundamental_values
-from technical_rules import run_technical_checks, get_technical_values
+from technical_rules import run_technical_checks, get_technical_values, get_scanner_metrics
 
 
 def score_stock(
@@ -30,6 +30,7 @@ def score_stock(
 
     technical_results = run_technical_checks(price_history, tech_rules)
     technical_values  = get_technical_values(price_history, tech_rules)
+    scanner_metrics   = get_scanner_metrics(price_history)
 
     if etf_mode:
         all_results       = technical_results
@@ -64,6 +65,10 @@ def score_stock(
         "passed":       score >= threshold,
         "rule_details": all_results,
         "raw_values":   raw_values,
+        "rsi":          scanner_metrics["rsi"],
+        "rvol":         scanner_metrics["rvol"],
+        "atr_pct":      scanner_metrics["atr_pct"],
+        "trend":        scanner_metrics["trend"],
     }
 
 
