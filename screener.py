@@ -17,6 +17,7 @@ def score_stock(
     fund_rules: dict = None,
     tech_rules: dict = None,
     threshold: float = None,
+    price_history=None,
 ) -> dict | None:
     if fund_rules is None:
         fund_rules = RULES_FUNDAMENTAL
@@ -29,7 +30,9 @@ def score_stock(
     ticker_started = perf_counter()
 
     history_started = perf_counter()
-    price_history = get_price_history(ticker)
+    reused_history = price_history is not None
+    if price_history is None:
+        price_history = get_price_history(ticker)
     history_seconds = perf_counter() - history_started
     if price_history is None:
         return None
@@ -45,9 +48,9 @@ def score_stock(
         sector            = "ETF"
         price             = float(price_history["Close"].iloc[-1])
     else:
-        metadata_started = perf_counter()
-        fundamentals = get_fundamentals(ticker)
-        metadata_seconds = perf_counter() - metadata_started
+        fundamentals, metadata_timing = get_fundamentals(ticker)
+        metadata_seconds = metadata_timing["seconds"]
+        metadata_cache_hit = metadata_timing["cache_hit"]
         if fundamentals is None:
             return None
         quality_gate = evaluate_quality_gate(ticker, fundamentals, price_history)
@@ -83,7 +86,9 @@ def score_stock(
         "opportunity": opportunity if not etf_mode else None,
         "timing": {
             "history_seconds": round(history_seconds, 3),
+            "history_reused": reused_history,
             "metadata_seconds": round(metadata_seconds, 3) if not etf_mode else 0.0,
+            "metadata_cache_hit": metadata_cache_hit if not etf_mode else False,
             "total_seconds": round(perf_counter() - ticker_started, 3),
         },
     }
