@@ -7,16 +7,17 @@ from config import (
     PASS_THRESHOLD, ETF_PASS_THRESHOLD,
 )
 
-st.set_page_config(page_title="Stock Screener", layout="wide")
-st.title("Stock Screener")
+st.set_page_config(page_title="3% Trading Bot", page_icon="📈", layout="wide")
+st.title("📈 3% Trading Bot")
+st.caption("MX + USA opportunity scanner — research mode only; no orders are sent to a broker.")
 
 #Sidebar
 with st.sidebar:
-    st.header("Configuration")
+    st.header("Scanner Configuration")
 
     st.subheader("Tickers")
-    stock_input = st.text_area("Stocks (comma-separated)", value=", ".join(TICKERS), height=80)
-    etf_input   = st.text_area("ETFs (comma-separated)",   value=", ".join(ETF_TICKERS), height=60)
+    stock_input = st.text_area("MX + USA stocks (comma-separated)", value=", ".join(TICKERS), height=100)
+    etf_input   = st.text_area("ETFs (optional)", value=", ".join(ETF_TICKERS), height=60)
     tickers     = [t.strip().upper() for t in stock_input.split(",") if t.strip()]
     etf_tickers = [t.strip().upper() for t in etf_input.split(",")   if t.strip()]
 
@@ -137,7 +138,7 @@ def render_detail_expander(r: dict):
 
 # ── Main panel ────────────────────────────────────────────────────────────────
 if not run:
-    st.info("Configure your rules in the sidebar, then click **Run Screener**.")
+    st.info("Review the initial MX + USA universe in the sidebar, then click **Run Screener**.")
     st.stop()
 
 results = []
@@ -183,6 +184,10 @@ def build_table(result_list):
             "Name":    r.get("name", r["ticker"]),
             "Sector":  r.get("sector", "N/A"),
             "Price":   f"${r['price']:.2f}" if r.get("price") else "N/A",
+            "RSI":     f"{r['rsi']:.2f}" if r.get("rsi") is not None else "N/A",
+            "RVOL":    f"{r['rvol']:.2f}x" if r.get("rvol") is not None else "N/A",
+            "ATR%":    f"{r['atr_pct']:.2f}%" if r.get("atr_pct") is not None else "N/A",
+            "Trend":   r.get("trend", "N/A"),
             "Score":   f"{r['score']*100:.0f}%",
             "Rules":   f"{r['rules_passed']}/{r['total_rules']}",
         })
