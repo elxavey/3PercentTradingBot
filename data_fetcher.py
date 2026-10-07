@@ -13,6 +13,7 @@ def get_fundamentals(ticker: str) -> dict:
             fcf_yield = free_cashflow / market_cap
         return {
             "ticker":   ticker,
+            "market_cap": market_cap,
             "pe_ratio": info.get("trailingPE", None),
             "pb_ratio": info.get("priceToBook", None),
             "peg_ratio":info.get("pegRatio", None),
@@ -21,6 +22,12 @@ def get_fundamentals(ticker: str) -> dict:
             "name":     info.get("shortName", ticker),
             "sector":   info.get("sector", "N/A"),
             "price":    info.get("currentPrice", None),
+            "currency": info.get("currency", None),
+            "revenue": info.get("totalRevenue", None),
+            "net_income": info.get("netIncomeToCommon", None),
+            "free_cashflow": free_cashflow,
+            "total_cash": info.get("totalCash", None),
+            "total_debt": info.get("totalDebt", None),
         }
     except Exception as e:
         print(f"  [!] Could not fetch fundamentals for {ticker}: {e}")
