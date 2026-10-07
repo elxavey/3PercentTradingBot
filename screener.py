@@ -1,3 +1,4 @@
+from time import perf_counter
 from config import (
     TICKERS, ETF_TICKERS,
     RULES_FUNDAMENTAL, RULES_TECHNICAL,
@@ -25,8 +26,11 @@ def score_stock(
         threshold = ETF_PASS_THRESHOLD if etf_mode else PASS_THRESHOLD
 
     print(f"  Analyzing {ticker}...")
+    ticker_started = perf_counter()
 
+    history_started = perf_counter()
     price_history = get_price_history(ticker)
+    history_seconds = perf_counter() - history_started
     if price_history is None:
         return None
 
@@ -41,7 +45,9 @@ def score_stock(
         sector            = "ETF"
         price             = float(price_history["Close"].iloc[-1])
     else:
+        metadata_started = perf_counter()
         fundamentals = get_fundamentals(ticker)
+        metadata_seconds = perf_counter() - metadata_started
         if fundamentals is None:
             return None
         quality_gate = evaluate_quality_gate(ticker, fundamentals, price_history)
@@ -75,6 +81,11 @@ def score_stock(
         "trend":        scanner_metrics["trend"],
         "quality_gate": quality_gate if not etf_mode else None,
         "opportunity": opportunity if not etf_mode else None,
+        "timing": {
+            "history_seconds": round(history_seconds, 3),
+            "metadata_seconds": round(metadata_seconds, 3) if not etf_mode else 0.0,
+            "total_seconds": round(perf_counter() - ticker_started, 3),
+        },
     }
 
 
