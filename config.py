@@ -1,5 +1,5 @@
-APP_VERSION = "0.2.0"
-APP_BUILD = "Quality Gate + Opportunity Score v0.1"
+APP_VERSION = "0.2.1"
+APP_BUILD = "Execution telemetry + Opportunity Score v0.1"
 
 # Initial universe for the 3% Trading Bot scanner.
 # Yahoo Finance uses the .MX suffix for Bolsa Mexicana de Valores symbols.
