@@ -1,5 +1,5 @@
-APP_VERSION = "0.3.1"
-APP_BUILD = "Data Pipeline Optimization + Cache"
+APP_VERSION = "0.4.0"
+APP_BUILD = "Dynamic Market Universe + Persistent History Cache"
 
 # Initial universe for the 3% Trading Bot scanner.
 # Yahoo Finance uses the .MX suffix for Bolsa Mexicana de Valores symbols.
@@ -34,6 +34,12 @@ BROAD_US_TICKERS = [
 UNIVERSES = {
     "Test - 12 symbols": TICKERS,
     "Broad MX + USA - 62 symbols": TICKERS + BROAD_US_TICKERS,
+}
+
+DYNAMIC_UNIVERSES = {
+    "Dynamic MX + USA - 250 symbols": 250,
+    "Dynamic MX + USA - 500 symbols": 500,
+    "Dynamic MX + USA - 1,000 symbols": 1000,
 }
 
 UNIVERSE_PRE_SCREEN = {
