@@ -6,7 +6,7 @@ from data_fetcher import get_price_history
 
 def pre_screen_symbol(ticker: str) -> dict:
     started = perf_counter()
-    history = get_price_history(ticker)
+    history, history_timing = get_price_history(ticker, return_timing=True)
 
     if history is None or history.empty:
         return {
@@ -14,6 +14,7 @@ def pre_screen_symbol(ticker: str) -> dict:
             "passed": False,
             "reason": "NO_HISTORY",
             "history": None,
+            "history_cache_hit": history_timing["cache_hit"],
             "seconds": round(perf_counter() - started, 3),
         }
 
@@ -33,6 +34,7 @@ def pre_screen_symbol(ticker: str) -> dict:
         "passed": all(checks.values()),
         "reason": "PASS" if all(checks.values()) else ", ".join(k for k, ok in checks.items() if not ok),
         "history": history,
+        "history_cache_hit": history_timing["cache_hit"],
         "price": price,
         "history_days": history_days,
         "avg_traded_value": avg_traded_value,
@@ -54,9 +56,13 @@ def run_universe_pre_screen(tickers: list[str], progress_callback=None) -> dict:
         if progress_callback:
             progress_callback(index + 1, len(tickers), ticker)
 
+    all_results = passed + excluded
+    history_cache_hits = sum(1 for r in all_results if r.get("history_cache_hit"))
+
     return {
         "total": len(tickers),
         "passed": passed,
         "excluded": excluded,
+        "history_cache_hits": history_cache_hits,
         "seconds": round(perf_counter() - started, 3),
     }
