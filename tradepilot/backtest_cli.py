@@ -11,6 +11,7 @@ import json
 import os
 
 from data_fetcher import get_price_history
+from tradepilot.exploratory_backtest import exploratory_backtest
 from tradepilot.backtest_validation import validated_backtest
 from tradepilot.historical_simulator import SimulationPolicy
 from tradepilot.backtest_validation import validate_history
@@ -28,6 +29,8 @@ def main(argv=None):
                         help="Assumed fraction per side, e.g. 0.001 = 0.1%%")
     parser.add_argument("--min-sessions", type=int, default=100)
     parser.add_argument("--force-refresh", action="store_true")
+    parser.add_argument("--strict", action="store_true",
+                        help="Require complete history; default is segmented exploratory mode")
     parser.add_argument("--use-eodhd", action="store_true",
                         help="Explicitly authorize limited EODHD recovery requests")
     parser.add_argument("--diagnose-eodhd", action="store_true",
@@ -45,7 +48,7 @@ def main(argv=None):
     initial = validate_history(history, market=args.market, as_of_utc=now,
                                min_sessions=args.min_sessions)
     recovery = {"state": "NOT_NEEDED", "recovered": [], "unresolved": []}
-    if initial["state"] == "REJECT" and initial["reasons"] == ["MISSING_EXCHANGE_SESSIONS"]:
+    if args.strict and initial["state"] == "REJECT" and initial["reasons"] == ["MISSING_EXCHANGE_SESSIONS"]:
         history, recovery = recover_missing_sessions(
             history, initial["missing_sessions"], symbol=args.symbol)
     secondary = {"state": "NOT_NEEDED", "recovered": [], "unresolved": []}
@@ -60,9 +63,10 @@ def main(argv=None):
         else:
             secondary = {"state": "NOT_CONFIGURED" if args.use_eodhd else "DISABLED_BY_DEFAULT",
                          "recovered": [], "unresolved": recovery["unresolved"]}
-    result = validated_backtest(history, symbol=args.symbol, market=args.market,
-                                as_of_utc=now, simulation_policy=policy,
-                                min_sessions=args.min_sessions)
+    runner = validated_backtest if args.strict else exploratory_backtest
+    result = runner(history, symbol=args.symbol, market=args.market,
+                    as_of_utc=now, simulation_policy=policy,
+                    min_sessions=args.min_sessions)
     if result["state"] == "REJECT":
         diagnostic = None
         if args.diagnose_eodhd and args.use_eodhd and os.getenv("EODHD_API_TOKEN") and secondary.get("unresolved"):
@@ -84,6 +88,7 @@ def main(argv=None):
         "simulation_policy": report["simulation_policy"],
         "limitations": report["limitations"],
         "research_only": True,
+        "excluded_segments": result.get("excluded_segments", 0),
     }, indent=2, default=str))
     return 0
 
