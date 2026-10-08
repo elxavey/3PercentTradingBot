@@ -8,12 +8,14 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 
 from data_fetcher import get_price_history
 from tradepilot.backtest_validation import validated_backtest
 from tradepilot.historical_simulator import SimulationPolicy
 from tradepilot.backtest_validation import validate_history
 from tradepilot.history_recovery import recover_missing_sessions
+from tradepilot.eodhd_source import verified_eodhd_daily
 
 
 def main(argv=None):
@@ -40,17 +42,30 @@ def main(argv=None):
     if initial["state"] == "REJECT" and initial["reasons"] == ["MISSING_EXCHANGE_SESSIONS"]:
         history, recovery = recover_missing_sessions(
             history, initial["missing_sessions"], symbol=args.symbol)
+    secondary = {"state": "NOT_NEEDED", "recovered": [], "unresolved": []}
+    if recovery.get("unresolved"):
+        if os.getenv("EODHD_API_TOKEN"):
+            def secondary_fetch(symbol, start, end):
+                return verified_eodhd_daily(symbol, start, end, reference=history)
+            history, secondary = recover_missing_sessions(
+                history, recovery["unresolved"], symbol=args.symbol,
+                fetcher=secondary_fetch)
+            secondary["source"] = "EODHD_VERIFIED_NEIGHBOR_CLOSES"
+        else:
+            secondary = {"state": "NOT_CONFIGURED", "recovered": [],
+                         "unresolved": recovery["unresolved"]}
     result = validated_backtest(history, symbol=args.symbol, market=args.market,
                                 as_of_utc=now, simulation_policy=policy,
                                 min_sessions=args.min_sessions)
     if result["state"] == "REJECT":
-        print(json.dumps({**result, "recovery": recovery}, indent=2, default=str))
+        print(json.dumps({**result, "recovery": recovery, "secondary_recovery": secondary}, indent=2, default=str))
         return 2
     report = result["backtest"]
     print(json.dumps({
         "state": result["state"], "symbol": report["symbol"],
         "market": report["market"], "currency": report["currency"],
         "validation": result["validation"], "recovery": recovery,
+        "secondary_recovery": secondary,
         "historical_sessions": report["historical_sessions"],
         "confirmed_signal_sessions": report["confirmed_signal_sessions"],
         "metrics": report["metrics"], "trades": report["trades"],
