@@ -42,11 +42,15 @@ class ConfirmationTests(unittest.TestCase):
     def test_one_close_fails_persistence(self):
         df = self.breakout()
         df.iloc[-2, df.columns.get_loc("Close")] = 95
+        df.iloc[-2, df.columns.get_loc("Low")] = 94
         self.assertIn("PERSISTENCE_NOT_CONFIRMED", confirm_breakout(df)["reasons"])
 
     def test_flat_trend_fails(self):
         df = self.breakout()
         df.loc[df.index[:-2], "Close"] = 95
+        df.loc[df.index[:-2], "Open"] = 95
+        df.loc[df.index[:-2], "High"] = 96
+        df.loc[df.index[:-2], "Low"] = 94
         self.assertIn("TREND_NOT_CONFIRMED", confirm_breakout(df)["reasons"])
 
     def test_insufficient_data(self):
