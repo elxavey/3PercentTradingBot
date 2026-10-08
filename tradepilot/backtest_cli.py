@@ -12,6 +12,8 @@ import json
 from data_fetcher import get_price_history
 from tradepilot.backtest_validation import validated_backtest
 from tradepilot.historical_simulator import SimulationPolicy
+from tradepilot.backtest_validation import validate_history
+from tradepilot.history_recovery import recover_missing_sessions
 
 
 def main(argv=None):
@@ -32,17 +34,23 @@ def main(argv=None):
     now = datetime.now(timezone.utc)
     history = get_price_history(args.symbol, period="2y",
                                 force_refresh=args.force_refresh)
+    initial = validate_history(history, market=args.market, as_of_utc=now,
+                               min_sessions=args.min_sessions)
+    recovery = {"state": "NOT_NEEDED", "recovered": [], "unresolved": []}
+    if initial["state"] == "REJECT" and initial["reasons"] == ["MISSING_EXCHANGE_SESSIONS"]:
+        history, recovery = recover_missing_sessions(
+            history, initial["missing_sessions"], symbol=args.symbol)
     result = validated_backtest(history, symbol=args.symbol, market=args.market,
                                 as_of_utc=now, simulation_policy=policy,
                                 min_sessions=args.min_sessions)
     if result["state"] == "REJECT":
-        print(json.dumps(result, indent=2, default=str))
+        print(json.dumps({**result, "recovery": recovery}, indent=2, default=str))
         return 2
     report = result["backtest"]
     print(json.dumps({
         "state": result["state"], "symbol": report["symbol"],
         "market": report["market"], "currency": report["currency"],
-        "validation": result["validation"],
+        "validation": result["validation"], "recovery": recovery,
         "historical_sessions": report["historical_sessions"],
         "confirmed_signal_sessions": report["confirmed_signal_sessions"],
         "metrics": report["metrics"], "trades": report["trades"],
