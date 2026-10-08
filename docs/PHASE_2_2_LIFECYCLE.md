@@ -23,10 +23,22 @@ an order execution or trading recommendation engine.
   newer scan creates the first new event.
 - Missing symbols in a scan are retained: no automatic expiration based on
   absence, as an absent symbol may simply be outside that scan's universe.
-- **Session-count automatic expiry is NOT implemented yet.** It needs a
-  defensible market-calendar/session observation policy and audit tests,
-  to be built in the next increment. Never interpret an unscanned day as
-  a failure or expiry.
+- **Session-based expiry is now available as an explicit reviewed action**
+  in Watchlist, using a selected successful saved scan. The preview requires
+  **three consecutive open sessions** in the symbol's own XNYS/XMEX calendar,
+  with an actual candidate row and Quality Gate FAIL (`quality_pass=0`)
+  for that symbol on each session, all from the **same universe** and
+  strictly newer than its last watchlist observation.
+- An absent symbol, a missing exchange session, a Quality Gate PASS,
+  or a scan of a different universe **cannot count as a failed session**.
+  The selected scan itself must contain the failing candidate. Multiple
+  evaluations on one day count as one session. The preview never writes.
+- Clicking **Apply session expiry** after checking the confirmation box
+  changes eligible entries to EXPIRED and creates an audit event with reason
+  `AUTO_QUALITY_FAIL_3_SESSIONS`. Repeating it does not add duplicate events.
+- This is **not unattended automatic expiry**: the Windows worker and scanner
+  do not mutate watchlist states. A fully automated expiry job would require
+  a separate opt-in and additional operational validation.
 
 ## Validate on Windows
 
@@ -42,7 +54,7 @@ git pull origin development
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Expected **113 tests** (previous 106 plus 7 new lifecycle tests).
+Expected **119 tests** (previous 113 plus 6 new expiry tests).
 
 ```powershell
 Clear-Host
