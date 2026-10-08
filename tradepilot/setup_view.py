@@ -38,6 +38,14 @@ def completed_history(history: pd.DataFrame | None, *, market: str,
         filtered = history.loc[mask].copy()
         if filtered.empty:
             return None, "NO_COMPLETED_BARS"
+        # Drop only old fully-empty provider placeholders, not partial/bad bars.
+        cols = ["Open", "High", "Low", "Close", "Volume"]
+        if all(col in filtered.columns for col in cols):
+            numeric = filtered[cols].apply(pd.to_numeric, errors="coerce")
+            blanks = numeric[cols[:4]].isna().all(axis=1) & numeric["Volume"].eq(0)
+            if blanks.iloc[-30:].any():
+                return None, "RECENT_EMPTY_PROVIDER_BAR"
+            filtered = filtered.loc[~blanks].copy()
         if any(not cal.is_session(stamp.date()) for stamp in dates[mask]):
             return None, "NON_SESSION_HISTORY_DATE"
         return filtered, ("LATEST_COMPLETED_SESSION" if dates[mask][-1].date() == cutoff
