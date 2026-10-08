@@ -41,3 +41,10 @@ $env:EODHD_API_TOKEN = Read-Host "EODHD API token"
 Flow: primary Yahoo two-year history -> targeted Yahoo recovery -> optional EODHD recovery for remaining missing dates -> full historical validation -> backtest. The EODHD adapter requests a single day at a time and verifies the two adjacent available dates' closing prices agree with Yahoo within 1.5% before accepting the missing bar. This is a **heuristic adjustment-basis check**, not a corporate-actions audit; an adjustment mismatch fails closed. All recovery remains in memory, without persistent cache writes or API token logging. When token is absent, secondary source is `NOT_CONFIGURED`.
 
 This source is not a guarantee: free accounts may not have MX historical coverage, and a genuinely non-trading day may be absent from both vendors. Never fill missing prices with fabricated bars. Do not assume EODHD provides a trade on the missing date until the API confirms it.
+
+
+### Adjusted-price EODHD recovery (October 2026)
+
+Yahoo's default yfinance daily history uses adjusted OHLC, while EODHD provides both raw `close` and `adjusted_close`. For a missing exchange session, the optional secondary recovery checks the nearest available Yahoo sessions on both sides. If raw EODHD closes agree within 0.5%, raw OHLC is used; otherwise both EODHD adjusted closes must agree within 0.5%. Only then are the missing session's OHLC scaled by its own explicit `adjusted_close / close` factor. Volume is never scaled. If the adjustment field is absent, invalid, or neighboring closes do not agree, recovery fails closed and backtesting remains rejected. This is a local compatibility check, not an audit of all corporate actions or a guarantee of backtest validity.
+
+Run `python -m unittest tests.test_eodhd_source -v` and the complete test suite before running `python -m tradepilot.backtest_cli --symbol ALSEA.MX --market MX --fee 0.0025 --slippage 0.001 --force-refresh`. The provider requests consume API quota and must not print the API token.
