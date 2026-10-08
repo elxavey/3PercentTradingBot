@@ -35,7 +35,12 @@ class WindowsTaskIntegrationTests(unittest.TestCase):
 
     def test_launcher_runs_one_shot_scheduler(self):
         self.assertIn("-m tradepilot.scheduler --universe $Universe", LAUNCH)
-        command_lines = [line.strip() for line in LAUNCH.splitlines()\n                         if line.lstrip().startswith("& $python ")]\n        self.assertEqual(len(command_lines), 1)\n        self.assertNotIn("--loop", command_lines[0])
+        command_lines = [
+            line.strip() for line in LAUNCH.splitlines()
+            if line.lstrip().startswith("& $python ")
+        ]
+        self.assertEqual(len(command_lines), 1)
+        self.assertNotIn("--loop", command_lines[0])
         self.assertNotIn("tradepilot.worker", LAUNCH)
 
     def test_launcher_writes_diagnostic_log(self):
