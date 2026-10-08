@@ -5,7 +5,8 @@ from pathlib import Path
 
 from tradepilot.storage.database import database_connection, initialize_database
 from tradepilot.watchlist import (
-    apply_session_expiry, list_watchlist, preview_session_expiry,\n    set_watchlist_state, update_watchlist, watchlist_history,
+    apply_session_expiry, list_watchlist, preview_session_expiry,
+    set_watchlist_state, update_watchlist, watchlist_history,
 )
 
 
