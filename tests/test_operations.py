@@ -23,7 +23,7 @@ class OperationsTests(unittest.TestCase):
 
     def test_migration_v3_and_idempotency(self):
         self.assertEqual(initialize_database(self.db), SCHEMA_VERSION)
-        self.assertEqual(initialize_database(self.db), 3)
+        self.assertEqual(initialize_database(self.db), SCHEMA_VERSION)
         with database_connection(self.db) as conn:
             self.assertIn("heartbeat_at_utc", [r[1] for r in conn.execute("PRAGMA table_info(job_runs)")])
             self.assertEqual([r[0] for r in conn.execute("SELECT version FROM schema_migrations")], list(range(1, SCHEMA_VERSION + 1)))
