@@ -75,6 +75,7 @@ def update_watchlist(
     observed = _utc(preview["observed_at_utc"])
     with database_connection(db_path) as conn:
         conn.execute("BEGIN IMMEDIATE")
+        conn.row_factory = sqlite3.Row
         latest = conn.execute(
             "SELECT MAX(last_seen_at_utc) FROM watchlist_entries"
         ).fetchone()[0]
