@@ -4,11 +4,11 @@ import streamlit as st
 
 from tradepilot.monitoring_view import local_timestamp
 from tradepilot.storage.scan_repository import list_scans
-from tradepilot.watchlist import list_watchlist, preview_watchlist, update_watchlist
+from tradepilot.watchlist import (\n    list_watchlist, preview_watchlist, set_watchlist_state,\n    update_watchlist, watchlist_history,\n)
 
 st.set_page_config(page_title="TradePilot | Watchlist", page_icon="👀", layout="wide")
 st.title("👀 TradePilot — Dynamic Watchlist")
-st.caption("Phase 2.1 · Persisted research shortlist · No broker orders or buy signals")
+st.caption("Phase 2.2 · Audited research lifecycle · No broker orders or buy signals")
 
 st.subheader("Current watchlist")
 try:
@@ -28,7 +28,50 @@ if current:
         "Source scan": row["last_scan_run_id"],
     } for row in current]
     st.dataframe(pd.DataFrame(display), use_container_width=True, hide_index=True)
-    st.metric("Tracked symbols", len(current))
+    active = sum(row["state"] in ("WATCHING", "PROMOTED") for row in current)
+    promoted = sum(row["state"] == "PROMOTED" for row in current)
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total tracked (all states)", len(current))
+    m2.metric("Active", active)
+    m3.metric("Promoted (score ≥ 70)", promoted)
+    st.caption("PROMOTED means a research ranking threshold, not a trading recommendation.")
+    st.subheader("Lifecycle history")
+    choices = {(row["symbol"], row["market"]): row for row in current}
+    selected_key = st.selectbox(
+        "Symbol to inspect",
+        list(choices),
+        format_func=lambda key: f"{key[0]} ({key[1]}) — {choices[key]['state']}",
+    )
+    events = watchlist_history(*selected_key)
+    if events:
+        event_rows = [{
+            "When (local)": local_timestamp(event["occurred_at_utc"]),
+            "From": event["previous_state"] or "NEW",
+            "To": event["new_state"],
+            "Previous score": event["previous_score"],
+            "New score": event["new_score"],
+            "Score change": (
+                round(event["new_score"] - event["previous_score"], 2)
+                if event["new_score"] is not None and event["previous_score"] is not None
+                else None
+            ),
+            "Reason": event["reason"],
+            "Scan ID": event["scan_run_id"],
+        } for event in events]
+        st.dataframe(pd.DataFrame(event_rows), use_container_width=True, hide_index=True)
+    else:
+        st.info("No lifecycle events recorded yet for this symbol (pre-2.2 entry).")
+    if choices[selected_key]["state"] in ("WATCHING", "PROMOTED"):
+        st.caption("Terminal actions are manual and irreversible in this version.")
+        confirm = st.checkbox("I confirm I want to retire this symbol from active tracking")
+        action = st.selectbox("Retirement reason", ["EXPIRED", "REMOVED"])
+        if st.button("Confirm retirement", disabled=not confirm):
+            try:
+                set_watchlist_state(*selected_key, action)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.rerun()
 else:
     st.info("No symbols tracked yet. Preview a saved scan below.")
 
