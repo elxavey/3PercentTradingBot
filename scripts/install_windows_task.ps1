@@ -39,10 +39,10 @@ $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIden
     -LogonType Interactive -RunLevel Limited
 if ($PSCmdlet.ShouldProcess($TaskName, "Register TradePilot scheduled task")) {
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-        -Settings $settings -Principal $principal -Force | Out-Null
+        -Settings $settings -Principal $principal | Out-Null
     Write-Host "Installed '$TaskName' for current signed-in user."
     Write-Host "Task checks every $IntervalMinutes minute(s); Python enforces MX+US market sessions."
     Write-Host "Inspect with: Get-ScheduledTask -TaskName '$TaskName'"
     Write-Host "Disable with: Disable-ScheduledTask -TaskName '$TaskName'"
-    Write-Host "Remove with: Unregister-ScheduledTask -TaskName '$TaskName' -Confirm:\$false"
+    Write-Host "Remove with: Unregister-ScheduledTask -TaskName '$TaskName' -Confirm:$false"
 }
