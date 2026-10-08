@@ -7,7 +7,7 @@ from pathlib import Path
 from tradepilot.operations import heartbeat, operational_status
 from tradepilot.storage.database import database_connection, initialize_database
 from tradepilot.worker import claim_job, finish_job, execute_once
-from tests.test_worker import fake_scan
+from test_worker import fake_scan
 
 UTC = timezone.utc
 SLOT = "2026-10-08T14:00:00Z"
