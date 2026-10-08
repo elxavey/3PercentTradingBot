@@ -121,10 +121,10 @@ def execute_once(
             except Exception:
                 # Do not abort the scan because the health channel is unavailable.
                 pass
-    heartbeat(job_id, db_path=db_path)
     monitor = Thread(target=pulse, name="tradepilot-heartbeat", daemon=True)
     monitor.start()
     try:
+        heartbeat(job_id, db_path=db_path)
         print(f"RUNNING job={job_id} universe={universe_name}", flush=True)
         outcome = scanner(**scan_kwargs)
         scan_id = persist(
