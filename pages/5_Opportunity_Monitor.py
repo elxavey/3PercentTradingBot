@@ -113,6 +113,13 @@ if rows is not None:
                 df[column] = None
         st.dataframe(df.drop(columns=["_rank"]), hide_index=True,
                      use_container_width=True)
+        missing = df.loc[df["Status"] == "INSUFFICIENT_DATA", ["Symbol", "Market", "Reason"]]
+        if not missing.empty:
+            st.warning(f"{len(missing)} symbols lack verified completed data; exclude from ranking.")
+            st.dataframe(missing, hide_index=True, use_container_width=True)
+        unconfirmed = df.loc[(df["Status"] == "BREAKOUT_CANDIDATE") & (df["Confirmation"] != "HISTORICAL_FILTERS_PASSED")]
+        if not unconfirmed.empty:
+            st.info(f"{len(unconfirmed)} breakout candidates have NOT passed historical confirmation filters.")
         st.caption("Distance = (prior 20-session resistance − latest completed close) "
                    "/ resistance × 100. Negative values mean the completed close "
                    "exceeded prior resistance, NOT a verified intraday trigger.")
