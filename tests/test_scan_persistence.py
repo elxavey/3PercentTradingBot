@@ -52,11 +52,11 @@ class ScanPersistenceTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_schema_v2_telemetry_table(self):
-        self.assertEqual(initialize_database(self.db), 2)
+        self.assertEqual(initialize_database(self.db), SCHEMA_VERSION)
         with database_connection(self.db) as conn:
             self.assertEqual(conn.execute(
                 "SELECT COUNT(*) FROM schema_migrations"
-            ).fetchone()[0], 2)
+            ).fetchone()[0], SCHEMA_VERSION)
             self.assertIsNotNone(conn.execute(
                 "SELECT name FROM sqlite_master WHERE name='scan_run_telemetry'"
             ).fetchone())
