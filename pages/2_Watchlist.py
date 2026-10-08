@@ -5,7 +5,8 @@ import streamlit as st
 from tradepilot.monitoring_view import local_timestamp
 from tradepilot.storage.scan_repository import list_scans
 from tradepilot.watchlist import (
-    apply_session_expiry, list_watchlist, preview_session_expiry,\n    preview_watchlist, set_watchlist_state,
+    apply_session_expiry, list_watchlist, preview_session_expiry,
+    preview_watchlist, set_watchlist_state,
     update_watchlist, watchlist_history,
 )
 
