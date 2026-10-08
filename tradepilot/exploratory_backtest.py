@@ -62,7 +62,9 @@ def exploratory_backtest(history, *, symbol: str, market: str,
             chunk.append(day)
     if chunk:
         boundaries.append(chunk)
-    # Preserve provider timestamps and timezones; select by exchange-local date.\n    date_positions = {stamp.date(): i for i, stamp in enumerate(completed.index)}\n    all_trades, signals, excluded, evaluated = [], 0, 0, 0
+    # Preserve provider timestamps and timezones; select by exchange-local date.
+    date_positions = {stamp.date(): i for i, stamp in enumerate(completed.index)}
+    all_trades, signals, excluded, evaluated = [], 0, 0, 0
     limitations = []
     for days in boundaries:
         segment = completed.iloc[[date_positions[d] for d in days]]
