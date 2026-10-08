@@ -9,8 +9,9 @@ st.set_page_config(page_title="TradePilot | Incremental Refresh", page_icon="�
 st.title("🔄 Incremental Watchlist Refresh")
 st.caption("Phase 2.3 · Research only · No automated broker orders")
 st.warning(
-    "The legacy scanner does not guarantee timestamp-verified live quotes. "
-    "Results are research observations, not live trading signals."
+    "Daily-history session dates can be checked against the last completed "
+    "exchange session. This is NOT verified intraday quote freshness and "
+    "does not produce live trading signals."
 )
 limit = st.slider("Maximum active symbols", min_value=1, max_value=50, value=50)
 try:
@@ -61,6 +62,7 @@ if saved:
         st.caption(f"Completed UTC: {comparison['finished_at_utc']} · "
                    f"Scan duration: {comparison['elapsed_seconds']:.1f}s")
         st.warning(comparison["freshness_note"])
+        st.caption("Older saved scans without session-date evidence remain UNKNOWN.")
         st.dataframe(pd.DataFrame(comparison["items"]), hide_index=True,
                      use_container_width=True)
         st.caption("NOT_EVALUATED means no candidate row; it is not a Quality Gate failure. "
