@@ -102,6 +102,25 @@ def _history_cache_is_fresh(path: Path) -> bool:
     return datetime.now(timezone.utc) - modified < timedelta(hours=HISTORY_TTL_HOURS)
 
 
+def _normalize_cached_history_index(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """Restore exchange-local DatetimeIndex from CSV, including mixed DST offsets.
+
+    Invalid timestamps must raise: callers can then fetch fresh history instead
+    of passing unverifiable dates to the research monitor.
+    """
+    if df.empty:
+        return df
+    zone = "America/Mexico_City" if ticker.upper().endswith(".MX") else "America/New_York"
+    # Yahoo daily CSV dates include UTC offsets; mixed summer/winter offsets
+    # cannot reliably be parsed as a single DatetimeIndex without utc=True.
+    parsed = pd.to_datetime(df.index, errors="raise", utc=True)
+    if parsed.isna().any() or not parsed.is_monotonic_increasing or not parsed.is_unique:
+        raise ValueError("Invalid cached history dates")
+    df = df.copy()
+    df.index = parsed.tz_convert(zone)
+    return df
+
+
 def get_price_history(
     ticker: str,
     period: str = "2y",
@@ -113,7 +132,8 @@ def get_price_history(
 
     if not force_refresh and _history_cache_is_fresh(cache_path):
         try:
-            df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
+            df = pd.read_csv(cache_path, index_col=0)
+            df = _normalize_cached_history_index(df, ticker)
             if not df.empty:
                 timing = {"cache_hit": True, "seconds": round(perf_counter() - started, 3)}
                 return (df, timing) if return_timing else df
