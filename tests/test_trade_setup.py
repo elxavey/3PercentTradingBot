@@ -21,7 +21,7 @@ class SetupRiskTests(unittest.TestCase):
         self.assertIn("LIVE_QUOTE_NOT_VERIFIED", r["reasons"])
 
     def test_valid_research_only_and_risk_cap(self):
-        r = self.evaluate(quote_freshness="FRESH",
+        r = self.evaluate(target=52.1, quote_freshness="FRESH",
                           quote_timestamp_verified=True, instrument_verified=True)
         self.assertEqual(r["state"], "RESEARCH_READY")
         self.assertFalse(r["actionable"])
