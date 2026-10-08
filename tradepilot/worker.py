@@ -9,10 +9,11 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
-import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from threading import Event, Thread
+from tradepilot.operations import heartbeat
 
 from config import APP_VERSION, DYNAMIC_UNIVERSES, UNIVERSES
 from tradepilot.core.scanner_service import run_scan
@@ -109,6 +110,20 @@ def execute_once(
     if job_id is None:
         print("SKIPPED: another scan is RUNNING or this slot was already claimed.", file=sys.stderr)
         return 2, None
+    # A lightweight independent heartbeat continues even during slow provider calls.
+    # A missed heartbeat is diagnostic, never an automatic release of the lock.
+    stop_heartbeat = Event()
+    def pulse():
+        while not stop_heartbeat.wait(30):
+            try:
+                if not heartbeat(job_id, db_path=db_path):
+                    break
+            except Exception:
+                # Do not abort the scan because the health channel is unavailable.
+                pass
+    heartbeat(job_id, db_path=db_path)
+    monitor = Thread(target=pulse, name="tradepilot-heartbeat", daemon=True)
+    monitor.start()
     try:
         print(f"RUNNING job={job_id} universe={universe_name}", flush=True)
         outcome = scanner(**scan_kwargs)
@@ -121,9 +136,13 @@ def execute_once(
     except Exception as exc:
         # Avoid printing provider tokens/credentials embedded in exception messages.
         error = f"{type(exc).__name__}: scan or persistence failed"
+        stop_heartbeat.set()
+        monitor.join(timeout=2)
         finish_job(job_id, db_path=db_path, status="FAILED", error=error)
         print(f"FAILED job={job_id} ({error})", file=sys.stderr)
         return 1, job_id
+    stop_heartbeat.set()
+    monitor.join(timeout=2)
     finish_job(job_id, db_path=db_path, status="SUCCEEDED")
     print(f"SUCCEEDED job={job_id} scan={scan_id}", flush=True)
     return 0, job_id
