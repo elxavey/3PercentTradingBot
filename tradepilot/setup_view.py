@@ -43,7 +43,9 @@ def completed_history(history: pd.DataFrame | None, *, market: str,
         return filtered, ("LATEST_COMPLETED_SESSION" if dates[mask][-1].date() == cutoff
                           else "OLDER_COMPLETED_SESSION")
     except (ValueError, TypeError, KeyError, OverflowError, ImportError) as exc:
-        return None, f"UNVERIFIABLE_HISTORY:{type(exc).__name__}"
+        # Preserve fail-closed behavior, but expose a short, sanitized diagnostic.
+        detail = " ".join(str(exc).split())[:180]
+        return None, f"UNVERIFIABLE_HISTORY:{type(exc).__name__}:{detail}"
 
 
 def analyze_watchlist_symbol(*, symbol: str, market: str,
