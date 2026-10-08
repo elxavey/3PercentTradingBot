@@ -4,7 +4,10 @@ import streamlit as st
 
 from tradepilot.monitoring_view import local_timestamp
 from tradepilot.storage.scan_repository import list_scans
-from tradepilot.watchlist import (\n    list_watchlist, preview_watchlist, set_watchlist_state,\n    update_watchlist, watchlist_history,\n)
+from tradepilot.watchlist import (
+    list_watchlist, preview_watchlist, set_watchlist_state,
+    update_watchlist, watchlist_history,
+)
 
 st.set_page_config(page_title="TradePilot | Watchlist", page_icon="👀", layout="wide")
 st.title("👀 TradePilot — Dynamic Watchlist")
