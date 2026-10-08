@@ -14,7 +14,8 @@ from pathlib import Path
 
 from tradepilot.storage.database import DEFAULT_DB_PATH, database_connection, initialize_database
 
-PROMOTION_SCORE = 70.0  # Research visibility threshold, not a buy signal.\nVALID_STATES = frozenset({"WATCHING", "PROMOTED", "EXPIRED", "REMOVED"})
+PROMOTION_SCORE = 70.0  # Research visibility threshold, not a buy signal.
+VALID_STATES = frozenset({"WATCHING", "PROMOTED", "EXPIRED", "REMOVED"})
 
 
 def _utc(value: str) -> datetime:
@@ -207,6 +208,139 @@ def set_watchlist_state(
         )
         return True
 
+
+
+def preview_session_expiry(
+    scan_id: str, *, db_path: str | Path = DEFAULT_DB_PATH,
+    failed_sessions: int = 3, calendars=None,
+) -> dict:
+    """Find active symbols failing Quality Gate in consecutive exchange sessions.
+
+    Only explicit candidate evaluations count. The latest saved scan must
+    evaluate the symbol as failed; unscanned symbols and missing sessions do
+    not count as failures. No database mutations.
+    """
+    if not 2 <= failed_sessions <= 10:
+        raise ValueError("failed_sessions must be between 2 and 10")
+    initialize_database(db_path)
+    with database_connection(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        target = conn.execute(
+            """SELECT id,universe_name,finished_at_utc,status
+               FROM scan_runs WHERE id=?""", (scan_id,),
+        ).fetchone()
+        if target is None or target["status"] != "SUCCEEDED" or not target["finished_at_utc"]:
+            raise ValueError("expiry requires a completed successful scan")
+        target_time = _utc(target["finished_at_utc"])
+        entries = conn.execute(
+            """SELECT w.symbol,w.market,w.state,w.last_seen_at_utc,w.last_scan_run_id
+               FROM watchlist_entries w WHERE w.state IN ('WATCHING','PROMOTED')"""
+        ).fetchall()
+        runs = conn.execute(
+            """SELECT r.id,r.finished_at_utc,c.symbol,c.quality_pass
+               FROM scan_runs r JOIN scan_candidates c ON c.scan_run_id=r.id
+               WHERE r.status='SUCCEEDED' AND r.finished_at_utc IS NOT NULL
+                 AND r.universe_name=? AND r.finished_at_utc<=?
+               ORDER BY r.finished_at_utc DESC,r.id DESC""",
+            (target["universe_name"], target["finished_at_utc"]),
+        ).fetchall()
+    if calendars is None:
+        import exchange_calendars as xcals
+        calendars = {"US": xcals.get_calendar("XNYS"), "MX": xcals.get_calendar("XMEX")}
+    by_symbol = {}
+    for run in runs:
+        by_symbol.setdefault(run["symbol"], []).append(run)
+    eligible = []
+    for entry in entries:
+        symbol, market = entry["symbol"], entry["market"]
+        if market not in calendars:
+            continue
+        calendar = calendars[market]
+        # Only evaluations newer than the most recent watchlist observation.
+        last_seen = _utc(entry["last_seen_at_utc"])
+        if last_seen > target_time:
+            raise ValueError("expiry scan predates an existing watchlist observation")
+        evaluations = by_symbol.get(symbol, [])
+        # Must be explicitly evaluated and failed in the selected scan.
+        latest = next((r for r in evaluations if r["id"] == scan_id), None)
+        if latest is None or latest["quality_pass"] != 0:
+            continue
+        failures = []
+        seen_dates = set()
+        for evaluation in evaluations:
+            observed = _utc(evaluation["finished_at_utc"])
+            if observed <= last_seen or observed > target_time:
+                continue
+            day = observed.date()
+            if day in seen_dates:
+                continue
+            seen_dates.add(day)
+            if not calendar.is_session(day):
+                break
+            if evaluation["quality_pass"] != 0:
+                break
+            if failures:
+                # A skipped exchange session interrupts the failure streak.
+                if calendar.previous_session(failures[-1]).date() != day:
+                    break
+            failures.append(day)
+            if len(failures) == failed_sessions:
+                eligible.append({
+                    "symbol": symbol, "market": market,
+                    "previous_state": entry["state"],
+                    "failed_sessions": failed_sessions,
+                    "first_failure_session": day.isoformat(),
+                    "last_failure_session": failures[0].isoformat(),
+                })
+                break
+    return {"scan_id": scan_id, "universe_name": target["universe_name"],
+            "observed_at_utc": target["finished_at_utc"],
+            "failed_sessions": failed_sessions, "items": eligible}
+
+
+def apply_session_expiry(
+    scan_id: str, *, db_path: str | Path = DEFAULT_DB_PATH,
+    failed_sessions: int = 3, calendars=None,
+) -> dict:
+    """Explicitly apply eligible expirations, atomically and with audit events."""
+    preview = preview_session_expiry(
+        scan_id, db_path=db_path, failed_sessions=failed_sessions, calendars=calendars,
+    )
+    changed = 0
+    with database_connection(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        for item in preview["items"]:
+            row = conn.execute(
+                """SELECT state,last_seen_at_utc,last_scan_run_id
+                   FROM watchlist_entries WHERE symbol=? AND market=?""",
+                (item["symbol"], item["market"]),
+            ).fetchone()
+            if row is None or row[0] != item["previous_state"]:
+                raise ValueError("watchlist changed since expiry preview; retry")
+            if _utc(row[1]) >= _utc(preview["observed_at_utc"]):
+                raise ValueError("expiry scan is not newer than last observation")
+            score_row = conn.execute(
+                """SELECT opportunity_score FROM scan_candidates
+                   WHERE scan_run_id=? AND symbol=?""",
+                (row[2], item["symbol"]),
+            ).fetchone()
+            score = score_row[0] if score_row else None
+            conn.execute(
+                "UPDATE watchlist_entries SET state='EXPIRED' WHERE symbol=? AND market=?",
+                (item["symbol"], item["market"]),
+            )
+            conn.execute(
+                """INSERT INTO watchlist_events
+                   (symbol,market,scan_run_id,occurred_at_utc,previous_state,
+                    new_state,previous_score,new_score,reason)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (item["symbol"], item["market"], scan_id,
+                 preview["observed_at_utc"], item["previous_state"],
+                 "EXPIRED", score, score,
+                 f"AUTO_QUALITY_FAIL_{failed_sessions}_SESSIONS"),
+            )
+            changed += 1
+    return {"scan_id": scan_id, "expired": changed, "items": preview["items"]}
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="TradePilot research watchlist")
