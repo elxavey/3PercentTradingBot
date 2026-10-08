@@ -8,6 +8,7 @@ import pandas as pd
 from data_fetcher import get_price_history
 from tradepilot.technical_setup import research_breakout
 from tradepilot.trade_setup import RiskPolicy
+from tradepilot.setup_visual import chart_candles
 
 
 def completed_history(history: pd.DataFrame | None, *, market: str,
@@ -60,4 +61,5 @@ def analyze_watchlist_symbol(*, symbol: str, market: str,
                 "actionable": False, "reasons": [evidence], "history_evidence": evidence}
     result = research_breakout(symbol=symbol, market=market,
                                history=completed, policy=policy)
-    return {**result, "history_evidence": evidence, "completed_bars": len(completed)}
+    return {**result, "history_evidence": evidence, "completed_bars": len(completed),
+            "chart_history": chart_candles(completed)}
