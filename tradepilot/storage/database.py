@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterator
 
 DEFAULT_DB_PATH = Path("data") / "tradepilot.db"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _MIGRATION_1 = """
 CREATE TABLE IF NOT EXISTS job_runs (
@@ -104,6 +104,24 @@ CREATE INDEX idx_job_runs_status_heartbeat ON job_runs(status, heartbeat_at_utc)
 """
 
 
+_MIGRATION_4 = """
+CREATE TABLE watchlist_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    market TEXT NOT NULL,
+    scan_run_id TEXT REFERENCES scan_runs(id),
+    occurred_at_utc TEXT NOT NULL,
+    previous_state TEXT,
+    new_state TEXT NOT NULL,
+    previous_score REAL,
+    new_score REAL,
+    reason TEXT NOT NULL,
+    FOREIGN KEY(symbol,market) REFERENCES watchlist_entries(symbol,market)
+);
+CREATE INDEX idx_watchlist_events_symbol ON watchlist_events(symbol,market,id DESC);
+"""
+
+
 def connect_database(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Open a configured connection. Caller owns and closes it."""
     path = Path(db_path)
@@ -165,6 +183,14 @@ def initialize_database(db_path: str | Path = DEFAULT_DB_PATH) -> int:
             connection.execute(
                 "INSERT INTO schema_migrations(version, applied_at_utc) "
                 "VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+            )
+        if current < 4:
+            for statement in _MIGRATION_4.split(";"):
+                if statement.strip():
+                    connection.execute(statement)
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at_utc) "
+                "VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
             )
         connection.commit()
         return SCHEMA_VERSION
