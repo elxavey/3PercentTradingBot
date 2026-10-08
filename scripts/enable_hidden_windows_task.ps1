@@ -35,6 +35,11 @@ $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\wscript.exe
     '//B //Nologo "' + $launcher + '" ' + $encoded
 ) -WorkingDirectory $root
 if ($PSCmdlet.ShouldProcess($TaskName, "Replace console action with hidden launcher (retain schedule and settings)")) {
+    $backupDir = Join-Path $root "data\\task_backups"
+    New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    $backup = Join-Path $backupDir ("tradepilot_task_" + (Get-Date -Format "yyyyMMdd_HHmmss_ffff") + ".xml")
+    Export-ScheduledTask -TaskName $TaskName | Out-File -LiteralPath $backup -Encoding Unicode
+    Write-Host "Previous task configuration saved: $backup"
     Set-ScheduledTask -TaskName $TaskName -Action $action | Out-Null
     Write-Host "Hidden action installed for '$TaskName'. Existing triggers, user and settings preserved."
     Write-Host "Check next run in: data\logs\windows_scheduler.log"
