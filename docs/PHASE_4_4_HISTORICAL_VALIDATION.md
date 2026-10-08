@@ -25,3 +25,19 @@ Next: run ALSEA and inspect the JSON; then address any validation gaps, build ou
 The CLI now retries up to **five** missing sessions per run using an explicit one-day Yahoo historical OHLCV request. Only a single bar matching the missing date with finite, coherent OHLCV is merged. No interpolation, prior-close carryforward or synthetic candle is permitted. The entire calendar/OHLCV validation runs again after recovery. Failed recovery leaves the backtest rejected and prints a `recovery` diagnostic. This applies to all symbols, not a hardcoded ALSEA exception.
 
 The recovery is **in-memory for that CLI run**; it does not alter the history cache or SQLite. A future run can retry again if the primary provider still omits the date. Repeated provider omission is not evidence of an exchange holiday or permission to skip the date; independent official-session confirmation or a verified alternate data source is needed for persistent resolution.
+
+## Optional second provider: EODHD
+
+EODHD documents daily OHLCV by symbol and date; `ALSEA.MX` is listed on its Mexican exchange. The provider requires an account token and access entitlements; **availability of the 2026-04-22 bar is not yet verified**.
+
+Set the key only in the current PowerShell session (never commit or paste it):
+```powershell
+$env:EODHD_API_TOKEN = Read-Host "EODHD API token"
+.\.venv\Scripts\python.exe -m unittest tests.test_eodhd_source -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+.\.venv\Scripts\python.exe -m tradepilot.backtest_cli --symbol ALSEA.MX --market MX --fee 0.0025 --slippage 0.001 --force-refresh
+```
+
+Flow: primary Yahoo two-year history -> targeted Yahoo recovery -> optional EODHD recovery for remaining missing dates -> full historical validation -> backtest. The EODHD adapter requests a single day at a time and verifies the two adjacent available dates' closing prices agree with Yahoo within 1.5% before accepting the missing bar. This is a **heuristic adjustment-basis check**, not a corporate-actions audit; an adjustment mismatch fails closed. All recovery remains in memory, without persistent cache writes or API token logging. When token is absent, secondary source is `NOT_CONFIGURED`.
+
+This source is not a guarantee: free accounts may not have MX historical coverage, and a genuinely non-trading day may be absent from both vendors. Never fill missing prices with fabricated bars. Do not assume EODHD provides a trade on the missing date until the API confirms it.
