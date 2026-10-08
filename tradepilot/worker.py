@@ -30,6 +30,12 @@ def utc_now() -> str:
 
 def claim_job(*, db_path: str | Path, scheduled_for_utc: str, config_version: str = APP_VERSION) -> str | None:
     """Atomically prevent simultaneous workers AND duplicate scheduled slots."""
+    parsed = datetime.fromisoformat(scheduled_for_utc.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("scheduled_for_utc must include a timezone")
+    scheduled_for_utc = parsed.astimezone(timezone.utc).isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
     initialize_database(db_path)
     job_id = str(uuid4())
     with database_connection(db_path) as conn:
