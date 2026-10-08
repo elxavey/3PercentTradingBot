@@ -1,5 +1,6 @@
 """Read-only 62-symbol expansion report tests."""
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,7 +27,7 @@ class ExpansionValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "test.db"
             initialize_database(path)
-            with sqlite3.connect(path) as conn:
+            with closing(sqlite3.connect(path)) as conn:
                 conn.execute(
                     """INSERT INTO scan_runs
                     (id,universe_name,started_at_utc,finished_at_utc,status,
@@ -40,6 +41,7 @@ class ExpansionValidationTests(unittest.TestCase):
                     (scan_run_id,symbol,quality_pass,observed_at_utc,raw_result_json)
                     VALUES (?,?,?,?,?)""",
                     ("run1", "ALSEA.MX", 1, "2026-10-08T10:05:00Z", "{}"))
+                conn.commit()
             report = expansion_report(path)
             self.assertEqual(report["state"], "READY_FOR_REVIEW")
             self.assertEqual(report["mx_candidates"], 1)
@@ -49,7 +51,7 @@ class ExpansionValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "test.db"
             initialize_database(path)
-            with sqlite3.connect(path) as conn:
+            with closing(sqlite3.connect(path)) as conn:
                 conn.execute(
                     """INSERT INTO scan_runs
                     (id,universe_name,started_at_utc,finished_at_utc,status,
@@ -58,6 +60,7 @@ class ExpansionValidationTests(unittest.TestCase):
                     VALUES (?,?,?,?,?,?,?,?,?,?)""",
                     ("run1", NAME, "2026-10-08T10:00:00Z", "2026-10-08T10:05:00Z",
                      "FAILED", 62, 60, 1, 300, "{}"))
+                conn.commit()
             self.assertEqual(expansion_report(path)["state"], "NEEDS_REVIEW")
 
 
