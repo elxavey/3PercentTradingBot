@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from time import perf_counter
 from tradepilot.core.scanner_service import run_scan
+from tradepilot.storage.scan_repository import save_scan, list_scans
 from config import (
     TICKERS, ETF_TICKERS,
     RULES_FUNDAMENTAL, RULES_TECHNICAL,
@@ -186,6 +187,29 @@ with st.spinner("Discovering and analyzing MX + USA market universe..."):
 
 universe_progress.empty()
 progress.empty()
+
+# Save the completed run without altering any scoring or market-data rules.
+# A database failure is visible but never changes the scanner's result.
+try:
+    persisted_scan_id = save_scan(
+        outcome,
+        universe_name=universe_mode,
+        config_snapshot={
+            "universe_mode": universe_mode,
+            "tickers": tickers if not is_dynamic_universe else [],
+            "dynamic_target": target_size if is_dynamic_universe else None,
+            "etf_tickers": etf_tickers,
+            "fundamental_rules": runtime_fundamental,
+            "technical_rules": runtime_technical,
+            "stock_threshold": pass_pct / 100,
+            "etf_threshold": etf_pass_pct / 100,
+            "app_version": APP_VERSION,
+        },
+    )
+    st.caption(f"Saved scan: {persisted_scan_id}")
+except Exception as exc:
+    st.warning(f"Scan completed, but SQLite persistence failed: {exc}")
+
 results = outcome.results
 universe_result = outcome.universe_result
 discovery_result = outcome.discovery_result
