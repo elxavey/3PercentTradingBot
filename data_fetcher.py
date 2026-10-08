@@ -115,7 +115,7 @@ def _normalize_cached_history_index(df: pd.DataFrame, ticker: str) -> pd.DataFra
     # cannot reliably be parsed as a single DatetimeIndex without utc=True.
     import re
     raw = [str(value).strip() for value in df.index]
-    offset_flags = [bool(re.search(r"(?:Z|[+-]\\d{2}:?\\d{2})$", value)) for value in raw]
+    offset_flags = [bool(re.search(r"(?:Z|[+-]\d{2}:?\d{2})$", value)) for value in raw]
     if any(offset_flags) and not all(offset_flags):
         raise ValueError("Mixed timezone-aware and timezone-naive cached dates")
     if all(offset_flags):
@@ -145,7 +145,7 @@ def get_price_history(
             if not df.empty:
                 timing = {"cache_hit": True, "seconds": round(perf_counter() - started, 3)}
                 return (df, timing) if return_timing else df
-        except (OSError, ValueError, pd.errors.ParserError):
+        except (OSError, ValueError, TypeError, pd.errors.ParserError):
             pass
 
     try:
