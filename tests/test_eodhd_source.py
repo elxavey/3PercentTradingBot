@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import Mock
 import pandas as pd
 
-from tradepilot.eodhd_source import eodhd_daily, verified_eodhd_daily
+from tradepilot.eodhd_source import eodhd_daily, verified_eodhd_daily, diagnose_eodhd_neighbors
 
 
 def reference():
@@ -52,6 +52,28 @@ class EodhdSourceTests(unittest.TestCase):
         result = verified_eodhd_daily("ALSEA.MX","2026-04-22","2026-04-23",
                                       reference=reference(),fetcher=inconsistent)
         self.assertTrue(result.empty)
+
+    def test_diagnostic_neighbors_match(self):
+        report = diagnose_eodhd_neighbors("ALSEA.MX","2026-04-22",
+                                           reference=reference(),fetcher=fixture)
+        self.assertEqual(report["state"],"NEIGHBORS_MATCH_AND_TARGET_PRESENT")
+
+    def test_diagnostic_mismatch_explains_prices(self):
+        def shifted(symbol,start,end):
+            df = fixture(symbol,start,end)
+            df["Close"] *= 1.04
+            return df
+        report = diagnose_eodhd_neighbors("ALSEA.MX","2026-04-22",
+                                           reference=reference(),fetcher=shifted)
+        self.assertEqual(report["state"],"ADJUSTMENT_BASIS_MISMATCH")
+        self.assertEqual(len(report["observations"]),2)
+
+    def test_diagnostic_missing_neighbor(self):
+        def missing(symbol,start,end):
+            return pd.DataFrame()
+        report = diagnose_eodhd_neighbors("ALSEA.MX","2026-04-22",
+                                           reference=reference(),fetcher=missing)
+        self.assertEqual(report["state"],"NEIGHBOR_NOT_RETURNED")
 
     def test_bad_symbol_or_range_rejected(self):
         with self.assertRaises(ValueError):
