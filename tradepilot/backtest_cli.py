@@ -48,7 +48,7 @@ def main(argv=None):
     initial = validate_history(history, market=args.market, as_of_utc=now,
                                min_sessions=args.min_sessions)
     recovery = {"state": "NOT_NEEDED", "recovered": [], "unresolved": []}
-    if args.strict and initial["state"] == "REJECT" and initial["reasons"] == ["MISSING_EXCHANGE_SESSIONS"]:
+    if (args.strict or args.use_eodhd) and initial["state"] == "REJECT" and initial["reasons"] == ["MISSING_EXCHANGE_SESSIONS"]:
         history, recovery = recover_missing_sessions(
             history, initial["missing_sessions"], symbol=args.symbol)
     secondary = {"state": "NOT_NEEDED", "recovered": [], "unresolved": []}
