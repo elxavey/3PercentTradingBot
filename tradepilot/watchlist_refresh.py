@@ -36,8 +36,9 @@ def refresh(*, db_path: str | Path = DEFAULT_DB_PATH, limit: int = 50,
     outcome = scanner(tickers=plan["symbols"], etf_tickers=[])
     as_of = datetime.now(timezone.utc)
     evidence = {}
-    for row in (outcome.universe_result.get("passed", []) +
-                outcome.universe_result.get("excluded", [])):
+    pre_screen = outcome.universe_result if isinstance(outcome.universe_result, dict) else {}
+    for row in (pre_screen.get("passed", []) +
+                pre_screen.get("excluded", [])):
         symbol = row.get("ticker")
         if symbol in plan["symbols"]:
             evidence[symbol] = assess_daily_history(
