@@ -75,6 +75,43 @@ class EodhdSourceTests(unittest.TestCase):
                                            reference=reference(),fetcher=missing)
         self.assertEqual(report["state"],"NEIGHBOR_NOT_RETURNED")
 
+    def test_adjusted_close_recovery_scales_all_ohlc_not_volume(self):
+        def adjusted_source(symbol, start, end):
+            raw = fixture(symbol, start, end)
+            raw["Close"] = raw["Close"] * 1.02
+            raw["Open"] = raw["Open"] * 1.02
+            raw["High"] = raw["High"] * 1.02
+            raw["Low"] = raw["Low"] * 1.02
+            raw["Adj Close"] = raw["Close"] / 1.02
+            return raw
+        recovered = verified_eodhd_daily("ALSEA.MX","2026-04-22","2026-04-23",
+                                         reference=reference(),fetcher=adjusted_source)
+        self.assertEqual(len(recovered),1)
+        self.assertAlmostEqual(recovered.iloc[0]["Close"],101.)
+        self.assertAlmostEqual(recovered.iloc[0]["Open"],101.)
+        self.assertAlmostEqual(recovered.iloc[0]["High"],102.)
+        self.assertAlmostEqual(recovered.iloc[0]["Low"],100.)
+        self.assertEqual(recovered.iloc[0]["Volume"],1200)
+
+    def test_adjusted_close_neighbors_mismatch_rejects(self):
+        def mismatch(symbol, start, end):
+            raw = fixture(symbol,start,end)
+            raw["Close"] *= 1.04
+            raw["Adj Close"] = raw["Close"] * 0.99
+            return raw
+        self.assertTrue(verified_eodhd_daily("ALSEA.MX","2026-04-22","2026-04-23",
+                                              reference=reference(),fetcher=mismatch).empty)
+
+    def test_adjusted_mode_requires_missing_day_adjusted_close(self):
+        def missing_adjustment(symbol,start,end):
+            raw = fixture(symbol,start,end)
+            raw["Close"] *= 1.04
+            if start != "2026-04-22":
+                raw["Adj Close"] = raw["Close"] / 1.04
+            return raw
+        self.assertTrue(verified_eodhd_daily("ALSEA.MX","2026-04-22","2026-04-23",
+                                              reference=reference(),fetcher=missing_adjustment).empty)
+
     def test_bad_symbol_or_range_rejected(self):
         with self.assertRaises(ValueError):
             eodhd_daily("ALSEA.MX","2026-04-22","2026-04-25",token="test")
