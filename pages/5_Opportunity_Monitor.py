@@ -8,12 +8,13 @@ from data_fetcher import get_price_history
 from tradepilot.opportunity_monitor import classify_opportunity, opportunity_history
 from tradepilot.breakout_confirmation import confirm_breakout, ConfirmationPolicy
 from tradepilot.opportunity_ranking import rank_opportunity
+from tradepilot.opportunity_categories import research_category, CATEGORY_ORDER
 from tradepilot.setup_view import completed_history
 from tradepilot.watchlist import list_watchlist
 
 st.set_page_config(page_title="TradePilot | Opportunity Monitor", page_icon="🔎", layout="wide")
 st.title("🔎 TradePilot — Opportunity Monitor")
-st.caption("Phases 3.5–3.6 · Manual refresh · Completed daily bars only · Research only")
+st.caption("Phases 3.5–3.7 · Manual refresh · Completed daily bars only · Research only")
 st.warning(
     "APPROACHING and BREAKOUT_CANDIDATE are historical research classifications, "
     "NOT verified live breakouts, buy signals or broker orders. Historical "
@@ -110,6 +111,8 @@ if rows is not None:
         df = pd.DataFrame(rows)
         order = {"BREAKOUT_CANDIDATE": 0, "APPROACHING": 1,
                  "MONITORING": 2, "INSUFFICIENT_DATA": 3}
+        df["Research category"] = df.apply(
+            lambda x: research_category(x["Status"], x.get("Confirmation")), axis=1)
         df["_rank"] = df["Status"].map(order)
         df = df.sort_values(["Ranking score", "Symbol"], ascending=[False, True],
                             na_position="last")
@@ -123,8 +126,22 @@ if rows is not None:
         st.caption("Phase 3.7 · Ranking score 0–100: proximity 30, volume 20, "
                    "trend 20, persistence 20, freshness 10. "
                    "Unverified data have no score. Ranking is NOT a buy signal.")
+        st.subheader("Research categories")
+        category_cols = st.columns(4)
+        for col, category in zip(category_cols, CATEGORY_ORDER[:4]):
+            col.metric(category, int((df["Research category"] == category).sum()))
+        st.caption("Categories describe historical evidence, not purchase readiness. "
+                   "A high ranking score never overrides missing breakout confirmation.")
         st.dataframe(df.drop(columns=["_rank"]), hide_index=True,
                      use_container_width=True)
+        st.subheader("Grouped research view")
+        for category in CATEGORY_ORDER:
+            group = df.loc[df["Research category"] == category]
+            if not group.empty:
+                with st.expander(f"{category} ({len(group)})", expanded=category != "General monitoring"):
+                    st.dataframe(group[["Symbol", "Market", "Ranking score", "Distance %",
+                                        "Volume ratio", "Confirmation", "Last session"]],
+                                 hide_index=True, use_container_width=True)
         missing = df.loc[df["Status"] == "INSUFFICIENT_DATA", ["Symbol", "Market", "Reason"]]
         if not missing.empty:
             st.warning(f"{len(missing)} symbols lack verified completed data; exclude from ranking.")
