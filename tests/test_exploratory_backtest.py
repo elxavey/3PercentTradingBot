@@ -37,6 +37,14 @@ class ExploratoryBacktestTests(unittest.TestCase):
         self.assertEqual(result["validation"]["segments"], 2)
         self.assertEqual(result["validation"]["missing_sessions_count"], 1)
 
+    def test_timezone_aware_yahoo_style_index(self):
+        h = sample()
+        h.index = h.index.tz_localize("America/Mexico_City")
+        result = run(h.drop(h.index[130]))
+        self.assertEqual(result["state"], "RESEARCH_RESULT")
+        self.assertEqual(result["validation"]["state"], "PARTIAL_HISTORY")
+        self.assertEqual(result["validation"]["segments"], 2)
+
     def test_two_isolated_missing_days(self):
         h = sample()
         result = run(h.drop(h.index[[70, 200]]))
