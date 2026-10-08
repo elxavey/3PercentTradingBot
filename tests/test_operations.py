@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tradepilot.operations import heartbeat, operational_status
-from tradepilot.storage.database import database_connection, initialize_database
+from tradepilot.storage.database import SCHEMA_VERSION, database_connection, initialize_database
 from tradepilot.worker import claim_job, finish_job, execute_once
 from test_worker import fake_scan
 
@@ -22,11 +22,11 @@ class OperationsTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_migration_v3_and_idempotency(self):
-        self.assertEqual(initialize_database(self.db), 3)
+        self.assertEqual(initialize_database(self.db), SCHEMA_VERSION)
         self.assertEqual(initialize_database(self.db), 3)
         with database_connection(self.db) as conn:
             self.assertIn("heartbeat_at_utc", [r[1] for r in conn.execute("PRAGMA table_info(job_runs)")])
-            self.assertEqual([r[0] for r in conn.execute("SELECT version FROM schema_migrations")], [1, 2, 3])
+            self.assertEqual([r[0] for r in conn.execute("SELECT version FROM schema_migrations")], list(range(1, SCHEMA_VERSION + 1)))
 
     def test_running_heartbeat_recent(self):
         job = claim_job(db_path=self.db, scheduled_for_utc=SLOT)
