@@ -15,7 +15,7 @@ from tradepilot.backtest_validation import validated_backtest
 from tradepilot.historical_simulator import SimulationPolicy
 from tradepilot.backtest_validation import validate_history
 from tradepilot.history_recovery import recover_missing_sessions
-from tradepilot.eodhd_source import verified_eodhd_daily
+from tradepilot.eodhd_source import verified_eodhd_daily, diagnose_eodhd_neighbors
 
 
 def main(argv=None):
@@ -28,6 +28,8 @@ def main(argv=None):
                         help="Assumed fraction per side, e.g. 0.001 = 0.1%%")
     parser.add_argument("--min-sessions", type=int, default=100)
     parser.add_argument("--force-refresh", action="store_true")
+    parser.add_argument("--diagnose-eodhd", action="store_true",
+                        help="Extra provider calls to diagnose rejected EODHD recovery")
     args = parser.parse_args(argv)
     if (args.market == "MX") != args.symbol.upper().endswith(".MX"):
         parser.error("market and .MX ticker suffix must agree")
@@ -58,7 +60,13 @@ def main(argv=None):
                                 as_of_utc=now, simulation_policy=policy,
                                 min_sessions=args.min_sessions)
     if result["state"] == "REJECT":
-        print(json.dumps({**result, "recovery": recovery, "secondary_recovery": secondary}, indent=2, default=str))
+        diagnostic = None
+        if args.diagnose_eodhd and os.getenv("EODHD_API_TOKEN") and secondary.get("unresolved"):
+            diagnostic = diagnose_eodhd_neighbors(
+                args.symbol, secondary["unresolved"][0], reference=history)
+        print(json.dumps({**result, "recovery": recovery,
+                          "secondary_recovery": secondary,
+                          "eodhd_diagnostic": diagnostic}, indent=2, default=str))
         return 2
     report = result["backtest"]
     print(json.dumps({
