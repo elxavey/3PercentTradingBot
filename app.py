@@ -1,15 +1,13 @@
 import streamlit as st
 import pandas as pd
 from time import perf_counter
-from screener import score_stock
+from tradepilot.core.scanner_service import run_scan
 from config import (
     TICKERS, ETF_TICKERS,
     RULES_FUNDAMENTAL, RULES_TECHNICAL,
     PASS_THRESHOLD, ETF_PASS_THRESHOLD,
     APP_VERSION, APP_BUILD, UNIVERSES, DYNAMIC_UNIVERSES,
 )
-from universe_discovery import discover_dynamic_universe
-from universe_manager import run_universe_pre_screen
 
 st.set_page_config(page_title="3% Trading Bot", page_icon="📈", layout="wide")
 title_col, version_col = st.columns([5, 2])
@@ -163,15 +161,38 @@ if not run:
     st.info("Review the initial MX + USA universe in the sidebar, then click **Run Screener**.")
     st.stop()
 
-results = []
-scan_started = perf_counter()
-discovery_result = None
+# The scanner pipeline runs in a UI-independent service; Streamlit only
+# supplies configuration, progress callbacks and result rendering.
+universe_progress = st.progress(0, text="Pre-screening market universe...")
+def update_universe_progress(done, total, ticker):
+    universe_progress.progress(done / total, text=f"Pre-screening {ticker}...")
+
+progress = st.progress(0, text="Running full analysis...")
+def update_analysis_progress(done, total, ticker):
+    progress.progress(done / total, text=f"Analyzing {ticker}...")
+
+with st.spinner("Discovering and analyzing MX + USA market universe..."):
+    outcome = run_scan(
+        tickers=None if is_dynamic_universe else tickers,
+        etf_tickers=etf_tickers,
+        dynamic_target=target_size if is_dynamic_universe else None,
+        fund_rules=runtime_fundamental,
+        tech_rules=runtime_technical,
+        stock_threshold=pass_pct / 100,
+        etf_threshold=etf_pass_pct / 100,
+        pre_screen_progress=update_universe_progress,
+        analysis_progress=update_analysis_progress,
+    )
+
+universe_progress.empty()
+progress.empty()
+results = outcome.results
+universe_result = outcome.universe_result
+discovery_result = outcome.discovery_result
+scan_seconds = outcome.scan_seconds
 
 if is_dynamic_universe:
-    with st.spinner(f"Discovering {target_size:,} MX + USA equities from Yahoo Finance..."):
-        discovery_result = discover_dynamic_universe(target_size)
-    tickers = discovery_result["symbols"]
-    if not tickers:
+    if not (discovery_result or {}).get("symbols"):
         st.error("Dynamic universe discovery returned no symbols. Try again or use a static universe.")
         st.stop()
     st.caption(
@@ -179,35 +200,6 @@ if is_dynamic_universe:
         f"({discovery_result['mx']} MX / {discovery_result['us']} USA) "
         f"in {discovery_result['seconds']:.1f}s"
     )
-
-universe_progress = st.progress(0, text="Pre-screening market universe...")
-def update_universe_progress(done, total, ticker):
-    universe_progress.progress(done / total, text=f"Pre-screening {ticker}...")
-
-universe_result = run_universe_pre_screen(tickers, update_universe_progress)
-universe_progress.empty()
-screen_tickers = [r["ticker"] for r in universe_result["passed"]]
-pre_screen_history = {r["ticker"]: r["history"] for r in universe_result["passed"]}
-
-all_tickers_list = [(t, False) for t in screen_tickers] + [(t, True) for t in etf_tickers]
-progress = st.progress(0, text="Running full analysis...")
-
-for i, (ticker, is_etf) in enumerate(all_tickers_list):
-    progress.progress((i + 1) / len(all_tickers_list), text=f"Analyzing {ticker}...")
-    result = score_stock(
-        ticker,
-        etf_mode=is_etf,
-        fund_rules=runtime_fundamental,
-        tech_rules=runtime_technical,
-        threshold=etf_pass_pct / 100 if is_etf else pass_pct / 100,
-        price_history=None if is_etf else pre_screen_history.get(ticker),
-    )
-    if result:
-        results.append(result)
-
-progress.empty()
-scan_seconds = perf_counter() - scan_started
-results.sort(key=lambda x: (x.get("opportunity") or {}).get("score", 0), reverse=True)
 
 if not results:
     st.warning("No results returned. Check your tickers.")
