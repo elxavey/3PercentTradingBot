@@ -7,6 +7,7 @@ import streamlit as st
 from data_fetcher import get_price_history
 from tradepilot.opportunity_monitor import classify_opportunity, opportunity_history
 from tradepilot.breakout_confirmation import confirm_breakout, ConfirmationPolicy
+from tradepilot.opportunity_ranking import rank_opportunity
 from tradepilot.setup_view import completed_history
 from tradepilot.watchlist import list_watchlist
 
@@ -45,6 +46,8 @@ if st.button("Refresh opportunity monitor", type="primary"):
         symbol, market = item["symbol"], item["market"]
         row = {"Symbol": symbol, "Market": market,
                "Watchlist": item["state"], "Score": item.get("opportunity_score")}
+        ranked = {"ranking_score": None, "ranking_tier": "EXCLUDED",
+                  "ranking_reason": "UNVERIFIED_OR_INSUFFICIENT_DATA"}
         try:
             raw = get_price_history(symbol)
             completed, evidence = completed_history(
@@ -70,6 +73,8 @@ if st.button("Refresh opportunity monitor", type="primary"):
                     "Persistence": f"{confirmation.get('confirmed_closes', 0)}/{persistence}",
                     "Confirmation reasons": ", ".join(confirmation["reasons"]),
                 })
+                ranked = rank_opportunity(result, confirmation,
+                                          history_evidence=evidence)
                 histories[(symbol, market)] = opportunity_history(
                     completed, near_pct=near
                 )
@@ -86,6 +91,9 @@ if st.button("Refresh opportunity monitor", type="primary"):
                 "Last session": None,
                 "Reason": f"FETCH_OR_VALIDATION_ERROR:{type(exc).__name__}",
             })
+        row.update({"Ranking score": ranked["ranking_score"],
+                    "Ranking tier": ranked["ranking_tier"],
+                    "Ranking reason": ranked["ranking_reason"]})
         rows.append(row)
         progress.progress((i + 1) / len(entries))
     st.session_state["opportunity_rows"] = rows
@@ -103,7 +111,8 @@ if rows is not None:
         order = {"BREAKOUT_CANDIDATE": 0, "APPROACHING": 1,
                  "MONITORING": 2, "INSUFFICIENT_DATA": 3}
         df["_rank"] = df["Status"].map(order)
-        df = df.sort_values(["_rank", "Distance %", "Symbol"], na_position="last")
+        df = df.sort_values(["Ranking score", "Symbol"], ascending=[False, True],
+                            na_position="last")
         counts = df["Status"].value_counts()
         cols = st.columns(4)
         for col, status in zip(cols, order):
@@ -111,6 +120,9 @@ if rows is not None:
         for column in ("Confirmation", "Volume ratio", "Persistence", "Confirmation reasons"):
             if column not in df.columns:
                 df[column] = None
+        st.caption("Phase 3.7 · Ranking score 0–100: proximity 30, volume 20, "
+                   "trend 20, persistence 20, freshness 10. "
+                   "Unverified data have no score. Ranking is NOT a buy signal.")
         st.dataframe(df.drop(columns=["_rank"]), hide_index=True,
                      use_container_width=True)
         missing = df.loc[df["Status"] == "INSUFFICIENT_DATA", ["Symbol", "Market", "Reason"]]
