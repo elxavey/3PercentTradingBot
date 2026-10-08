@@ -36,7 +36,7 @@ def eodhd_daily(symbol: str, start: str, end: str, *, token=None, requester=None
             continue
         rows.append({"Date": bar["date"], "Open": bar.get("open"),
                      "High": bar.get("high"), "Low": bar.get("low"),
-                     "Close": bar.get("close"), "Volume": bar.get("volume")})
+                     "Close": bar.get("close"), "Adj Close": bar.get("adjusted_close"), "Volume": bar.get("volume")})
     if len(rows) != 1:
         return pd.DataFrame()
     return pd.DataFrame(rows).set_index(pd.to_datetime([rows[0]["Date"]])).drop(columns=["Date"])
@@ -44,12 +44,15 @@ def eodhd_daily(symbol: str, start: str, end: str, *, token=None, requester=None
 
 def verified_eodhd_daily(symbol: str, start: str, end: str, *,
                          reference: pd.DataFrame, fetcher=eodhd_daily,
-                         max_relative_difference: float = 0.015):
-    """Require adjacent provider closing prices to agree with Yahoo basis.
+                         max_relative_difference: float = 0.005):
+    """Accept only comparable neighboring adjusted closes, never a blind scale.
 
-    No cross-provider stitching when split/dividend adjustments differ.
+    When EODHD raw closes match Yahoo, use raw OHLC. Otherwise require EODHD
+    adjusted closes to match both Yahoo neighbors, then scale missing OHLC by
+    that day's own explicit adjusted_close / close ratio. No interpolation.
     """
     from datetime import timedelta
+    from math import isfinite
     if not isinstance(reference, pd.DataFrame) or reference.empty:
         return pd.DataFrame()
     target = date.fromisoformat(start)
@@ -58,25 +61,47 @@ def verified_eodhd_daily(symbol: str, start: str, end: str, *,
     after = [d for d in dates if d > target]
     if not before or not after:
         return pd.DataFrame()
-    neighbors = [before[-1], after[0]]
-    for day in neighbors:
+    observations = []
+    for day in (before[-1], after[0]):
         try:
-            remote = fetcher(symbol, day.isoformat(),
-                             (day + timedelta(days=1)).isoformat())
-            if not isinstance(remote, pd.DataFrame) or len(remote) != 1:
+            remote = fetcher(symbol, day.isoformat(), (day + timedelta(days=1)).isoformat())
+            if not isinstance(remote, pd.DataFrame) or len(remote) != 1 or remote.index[0].date() != day:
                 return pd.DataFrame()
-            if remote.index[0].date() != day:
+            row = remote.iloc[0]
+            local = float(reference.loc[[x.date() == day for x in reference.index]].iloc[0]["Close"])
+            raw = float(row["Close"])
+            adjusted = float(row["Adj Close"]) if "Adj Close" in remote else float("nan")
+            if not all(isfinite(v) and v > 0 for v in (local, raw)):
                 return pd.DataFrame()
-            remote_close = float(remote.iloc[0]["Close"])
-            local_close = float(reference.loc[[x.date() == day for x in reference.index]].iloc[0]["Close"])
-            from math import isfinite
-            if not all(isfinite(x) and x > 0 for x in (remote_close,local_close)):
-                return pd.DataFrame()
-            if abs(remote_close / local_close - 1) > max_relative_difference:
-                return pd.DataFrame()
+            observations.append((local, raw, adjusted))
         except Exception:
             return pd.DataFrame()
-    return fetcher(symbol, start, end)
+    raw_match = all(abs(raw / local - 1) <= max_relative_difference
+                    for local, raw, adj in observations)
+    adjusted_match = all(isfinite(adj) and adj > 0
+                         and abs(adj / local - 1) <= max_relative_difference
+                         for local, raw, adj in observations)
+    if not raw_match and not adjusted_match:
+        return pd.DataFrame()
+    try:
+        missing = fetcher(symbol, start, end)
+        if not isinstance(missing, pd.DataFrame) or len(missing) != 1 or missing.index[0].date() != target:
+            return pd.DataFrame()
+        if raw_match:
+            return missing
+        row = missing.iloc[0]
+        raw_close, adj_close = float(row["Close"]), float(row["Adj Close"])
+        if not all(isfinite(v) and v > 0 for v in (raw_close, adj_close)):
+            return pd.DataFrame()
+        ratio = adj_close / raw_close
+        if not isfinite(ratio) or ratio <= 0:
+            return pd.DataFrame()
+        adjusted = missing.copy()
+        for col in ("Open", "High", "Low", "Close"):
+            adjusted[col] = pd.to_numeric(adjusted[col], errors="raise") * ratio
+        return adjusted
+    except Exception:
+        return pd.DataFrame()
 
 
 def diagnose_eodhd_neighbors(symbol: str, missing_date: str, *,
