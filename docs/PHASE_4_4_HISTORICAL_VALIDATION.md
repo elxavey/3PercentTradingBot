@@ -19,3 +19,9 @@ Historical session continuity is checked between first and last observed dates; 
 **Limitations:** this is in-sample research on currently selected symbols, not out-of-sample evidence of a profitable strategy. Yahoo historical data may be revised; no historical constituent list/delistings, split/dividend audit, bid/ask spreads, actual GBM fees/taxes, USD/MXN FX, portfolio allocation or intraday price path verification. Trade-level compounded return assumes sequential full reinvestment and is NOT portfolio equity. Drawdown is closed-trade-only. Do not compare MXN and USD returns as pooled portfolio performance.
 
 Next: run ALSEA and inspect the JSON; then address any validation gaps, build out-of-sample partitions and realistic fee/FX models before extending to 62 symbols.
+
+## Automatic missing-session recovery (follow-up)
+
+The CLI now retries up to **five** missing sessions per run using an explicit one-day Yahoo historical OHLCV request. Only a single bar matching the missing date with finite, coherent OHLCV is merged. No interpolation, prior-close carryforward or synthetic candle is permitted. The entire calendar/OHLCV validation runs again after recovery. Failed recovery leaves the backtest rejected and prints a `recovery` diagnostic. This applies to all symbols, not a hardcoded ALSEA exception.
+
+The recovery is **in-memory for that CLI run**; it does not alter the history cache or SQLite. A future run can retry again if the primary provider still omits the date. Repeated provider omission is not evidence of an exchange holiday or permission to skip the date; independent official-session confirmation or a verified alternate data source is needed for persistent resolution.
