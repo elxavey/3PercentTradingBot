@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import json
 import math
+import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -120,7 +121,11 @@ def save_scan(
     discovered_count = int((discovery or {}).get("discovered", pre.get("total", 0)))
     pre_screen_count = len(pre.get("passed", []))
     quality_pass_count = sum(bool((r.get("quality_gate") or {}).get("passed")) for r in results)
-    finished = _utc_now()
+    finished_dt = datetime.now(timezone.utc)
+    finished = finished_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    started = (finished_dt - timedelta(seconds=float(outcome.scan_seconds))).isoformat(
+        timespec="milliseconds"
+    ).replace("+00:00", "Z")
 
     initialize_database(db_path)
     with database_connection(db_path) as conn:
@@ -129,7 +134,7 @@ def save_scan(
             (id,job_run_id,universe_name,started_at_utc,finished_at_utc,status,
              discovered_count,pre_screen_count,quality_pass_count,elapsed_seconds,
              config_snapshot_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (scan_id, job_run_id, universe_name, finished, finished, "SUCCEEDED",
+            (scan_id, job_run_id, universe_name, started, finished, "SUCCEEDED",
              discovered_count, pre_screen_count, quality_pass_count,
              float(outcome.scan_seconds), serialized_config),
         )
@@ -153,7 +158,7 @@ def get_scan(scan_id: str, *, db_path: str | Path = DEFAULT_DB_PATH) -> StoredSc
     """Recover a persisted scan and all its ranked candidates."""
     initialize_database(db_path)
     with database_connection(db_path) as conn:
-        conn.row_factory = __import__("sqlite3").Row
+        conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM scan_runs WHERE id = ?", (scan_id,)).fetchone()
         if row is None:
             return None
