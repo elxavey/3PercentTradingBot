@@ -44,7 +44,7 @@ class DatabaseFoundationTests(unittest.TestCase):
         with database_connection(self.db) as conn:
             self.assertEqual(conn.execute(
                 "SELECT COUNT(*) FROM schema_migrations"
-            ).fetchone()[0], 1)
+            ).fetchone()[0], SCHEMA_VERSION)
 
     def test_unique_scheduled_job_prevents_duplicates(self):
         initialize_database(self.db)
