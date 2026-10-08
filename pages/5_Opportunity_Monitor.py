@@ -6,12 +6,13 @@ import streamlit as st
 
 from data_fetcher import get_price_history
 from tradepilot.opportunity_monitor import classify_opportunity, opportunity_history
+from tradepilot.breakout_confirmation import confirm_breakout, ConfirmationPolicy
 from tradepilot.setup_view import completed_history
 from tradepilot.watchlist import list_watchlist
 
 st.set_page_config(page_title="TradePilot | Opportunity Monitor", page_icon="🔎", layout="wide")
 st.title("🔎 TradePilot — Opportunity Monitor")
-st.caption("Phase 3.5 · Manual refresh · Completed daily bars only · Research only")
+st.caption("Phases 3.5–3.6 · Manual refresh · Completed daily bars only · Research only")
 st.warning(
     "APPROACHING and BREAKOUT_CANDIDATE are historical research classifications, "
     "NOT verified live breakouts, buy signals or broker orders. Historical "
@@ -31,6 +32,11 @@ near = st.slider("Near resistance threshold (%)", min_value=0.5, max_value=10.0,
                  value=3.0, step=0.5)
 st.caption(f"{len(entries)} active symbols. Analysis runs only on click. "
            "No changes to SQLite, Windows tasks, or Watchlist.")
+with st.expander("Phase 3.6 · Historical breakout confirmation filters"):
+    volume_ratio = st.slider("Minimum latest-session volume / prior 20-session average", 1.0, 3.0, 1.2, 0.1)
+    persistence = st.slider("Required consecutive completed closes above prior resistance", 2, 4, 2)
+    breakout_pct = st.slider("Minimum close above resistance (%)", 0.0, 3.0, 0.1, 0.1)
+settings = (near, volume_ratio, persistence, breakout_pct)
 if st.button("Refresh opportunity monitor", type="primary"):
     now = datetime.now(timezone.utc)
     rows, histories = [], {}
@@ -54,6 +60,16 @@ if st.button("Refresh opportunity monitor", type="primary"):
                           "session": None, "reason": "STALE_COMPLETED_HISTORY"}
             else:
                 result = classify_opportunity(completed, near_pct=near)
+                confirmation = confirm_breakout(completed, policy=ConfirmationPolicy(
+                    persistence_sessions=persistence,
+                    minimum_volume_ratio=volume_ratio,
+                    minimum_breakout_pct=breakout_pct))
+                row.update({
+                    "Confirmation": confirmation["state"],
+                    "Volume ratio": confirmation.get("volume_ratio"),
+                    "Persistence": f"{confirmation.get('confirmed_closes', 0)}/{persistence}",
+                    "Confirmation reasons": ", ".join(confirmation["reasons"]),
+                })
                 histories[(symbol, market)] = opportunity_history(
                     completed, near_pct=near
                 )
@@ -74,12 +90,12 @@ if st.button("Refresh opportunity monitor", type="primary"):
         progress.progress((i + 1) / len(entries))
     st.session_state["opportunity_rows"] = rows
     st.session_state["opportunity_histories"] = histories
-    st.session_state["opportunity_near"] = near
+    st.session_state["opportunity_settings"] = settings
     st.session_state["opportunity_as_of"] = now.isoformat()
 
 rows = st.session_state.get("opportunity_rows")
 if rows is not None:
-    if st.session_state.get("opportunity_near") != near:
+    if st.session_state.get("opportunity_settings") != settings:
         st.info("Threshold changed. Click Refresh to recalculate.")
     else:
         st.caption(f"Last manual analysis (UTC): {st.session_state['opportunity_as_of']}")
@@ -92,6 +108,9 @@ if rows is not None:
         cols = st.columns(4)
         for col, status in zip(cols, order):
             col.metric(status.replace("_", " ").title(), int(counts.get(status, 0)))
+        for column in ("Confirmation", "Volume ratio", "Persistence", "Confirmation reasons"):
+            if column not in df.columns:
+                df[column] = None
         st.dataframe(df.drop(columns=["_rank"]), hide_index=True,
                      use_container_width=True)
         st.caption("Distance = (prior 20-session resistance − latest completed close) "
@@ -113,5 +132,5 @@ if rows is not None:
                              hide_index=True, use_container_width=True)
             else:
                 st.info("Insufficient historical observations.")
-        st.info("Research only. No alerts are sent, no orders placed, "
+        st.info("Historical filters passing does NOT verify a live quote, trade entry, or profitability. No alerts are sent, no orders placed, "
                 "and no automatic scheduler jobs have been modified.")
