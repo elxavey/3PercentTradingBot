@@ -59,3 +59,30 @@ git pull origin development
 ```
 
 Expected 127 tests (previous 125 + 2). Do not update the Windows task.
+
+
+## Daily session freshness (research-only)
+
+New manual incremental scans reuse the **same pre-screen price-history data**
+used by the scanner; they do not perform a second provider request. For each
+symbol, `tradepilot/daily_freshness.py` compares the final history index date
+with the **last completed** session from its XNYS or XMEX exchange calendar.
+The result is saved in the scan configuration snapshot under
+`daily_session_freshness`, with FRESH / STALE / UNKNOWN, reason, observed
+session date and expected completed session date.
+
+**FRESH means the daily history includes the latest completed exchange
+session, NOT that an intraday quote is live or verified.** While today's
+session is in progress, today's daily-history date is UNKNOWN (unfinished).
+An old/missing history date is STALE/UNKNOWN; unscanned candidates are
+UNKNOWN. Legacy scans without this evidence remain UNKNOWN, never
+backfilled from ingestion timestamps. Existing watchlist states are unchanged.
+
+Validation: update development, compile the files, run all tests, then
+perform **one new manual incremental refresh** in Streamlit and inspect the
+Historical score comparison table. The previously saved scan remains
+UNKNOWN because it predates this feature.
+
+Further work: provider-issued bar end timestamps, cache-age checks,
+per-symbol download failures, and an explicit live/intraday freshness
+policy remain outstanding. No Windows scheduler changes.
