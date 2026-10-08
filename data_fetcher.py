@@ -113,11 +113,19 @@ def _normalize_cached_history_index(df: pd.DataFrame, ticker: str) -> pd.DataFra
     zone = "America/Mexico_City" if ticker.upper().endswith(".MX") else "America/New_York"
     # Yahoo daily CSV dates include UTC offsets; mixed summer/winter offsets
     # cannot reliably be parsed as a single DatetimeIndex without utc=True.
-    parsed = pd.to_datetime(df.index, errors="raise", utc=True)
+    import re
+    raw = [str(value).strip() for value in df.index]
+    offset_flags = [bool(re.search(r"(?:Z|[+-]\\d{2}:?\\d{2})$", value)) for value in raw]
+    if any(offset_flags) and not all(offset_flags):
+        raise ValueError("Mixed timezone-aware and timezone-naive cached dates")
+    if all(offset_flags):
+        parsed = pd.to_datetime(df.index, errors="raise", utc=True).tz_convert(zone)
+    else:
+        parsed = pd.to_datetime(df.index, errors="raise").tz_localize(zone, ambiguous="raise", nonexistent="raise")
     if parsed.isna().any() or not parsed.is_monotonic_increasing or not parsed.is_unique:
         raise ValueError("Invalid cached history dates")
     df = df.copy()
-    df.index = parsed.tz_convert(zone)
+    df.index = parsed
     return df
 
 
