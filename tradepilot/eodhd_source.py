@@ -77,3 +77,53 @@ def verified_eodhd_daily(symbol: str, start: str, end: str, *,
         except Exception:
             return pd.DataFrame()
     return fetcher(symbol, start, end)
+
+
+def diagnose_eodhd_neighbors(symbol: str, missing_date: str, *,
+                             reference: pd.DataFrame, fetcher=eodhd_daily,
+                             tolerance: float = 0.015) -> dict:
+    """Safe diagnostics: no token, URL or provider exception text exposed."""
+    from datetime import timedelta
+    from math import isfinite
+    target = date.fromisoformat(missing_date)
+    if not isinstance(reference, pd.DataFrame) or reference.empty:
+        return {"state": "NO_REFERENCE"}
+    dates = sorted({x.date() for x in reference.index})
+    before = [d for d in dates if d < target]
+    after = [d for d in dates if d > target]
+    if not before or not after:
+        return {"state": "NO_NEIGHBORS"}
+    observations = []
+    for day in (before[-1], after[0]):
+        try:
+            remote = fetcher(symbol, day.isoformat(),
+                             (day + timedelta(days=1)).isoformat())
+            if not isinstance(remote, pd.DataFrame) or len(remote) != 1 or remote.index[0].date() != day:
+                return {"state": "NEIGHBOR_NOT_RETURNED", "date": day.isoformat(),
+                        "observations": observations}
+            local = float(reference.loc[[x.date() == day for x in reference.index]].iloc[0]["Close"])
+            other = float(remote.iloc[0]["Close"])
+            if not all(isfinite(v) and v > 0 for v in (local, other)):
+                return {"state": "INVALID_NEIGHBOR_CLOSE", "date": day.isoformat()}
+            difference = abs(other / local - 1)
+            observations.append({"date": day.isoformat(), "yahoo_close": round(local, 6),
+                                 "eodhd_close": round(other, 6),
+                                 "difference_pct": round(difference * 100, 4)})
+        except Exception as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            return {"state": "PROVIDER_ERROR", "date": day.isoformat(),
+                    "error_type": type(exc).__name__,
+                    "http_status": status if isinstance(status, int) else None}
+    if any(x["difference_pct"] > tolerance * 100 for x in observations):
+        return {"state": "ADJUSTMENT_BASIS_MISMATCH", "observations": observations,
+                "tolerance_pct": tolerance * 100}
+    try:
+        bar = fetcher(symbol, missing_date, (target + timedelta(days=1)).isoformat())
+        if not isinstance(bar, pd.DataFrame) or len(bar) != 1 or bar.index[0].date() != target:
+            return {"state": "TARGET_NOT_RETURNED", "observations": observations}
+    except Exception as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return {"state": "PROVIDER_ERROR", "date": missing_date,
+                "error_type": type(exc).__name__,
+                "http_status": status if isinstance(status, int) else None}
+    return {"state": "NEIGHBORS_MATCH_AND_TARGET_PRESENT", "observations": observations}
