@@ -47,7 +47,8 @@ def derive_levels(history: pd.DataFrame, *, lookback: int = 20,
         return {"state": "WAIT", "reasons": ["INVALID_OHLCV"]}
     # Float-adjusted Yahoo OHLC values may differ at machine precision.
     # Relative tolerance 1e-12; do not round or mutate source prices.
-    tolerance = data[["Open", "High", "Low", "Close"]].abs().max(axis=1) * 1e-12\n    if ((data[["Open", "High", "Low", "Close"]] <= 0).any().any()
+    tolerance = data[["Open", "High", "Low", "Close"]].abs().max(axis=1) * 1e-12
+    if ((data[["Open", "High", "Low", "Close"]] <= 0).any().any()
             or (data["Volume"] < 0).any()
             or (data["High"] + tolerance < data[["Open", "Low", "Close"]].max(axis=1)).any()
             or (data["Low"] - tolerance > data[["Open", "High", "Close"]].min(axis=1)).any()):
