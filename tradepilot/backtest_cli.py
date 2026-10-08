@@ -28,9 +28,13 @@ def main(argv=None):
                         help="Assumed fraction per side, e.g. 0.001 = 0.1%%")
     parser.add_argument("--min-sessions", type=int, default=100)
     parser.add_argument("--force-refresh", action="store_true")
+    parser.add_argument("--use-eodhd", action="store_true",
+                        help="Explicitly authorize limited EODHD recovery requests")
     parser.add_argument("--diagnose-eodhd", action="store_true",
                         help="Extra provider calls to diagnose rejected EODHD recovery")
     args = parser.parse_args(argv)
+    if args.diagnose_eodhd and not args.use_eodhd:
+        parser.error("--diagnose-eodhd requires --use-eodhd")
     if (args.market == "MX") != args.symbol.upper().endswith(".MX"):
         parser.error("market and .MX ticker suffix must agree")
     policy = SimulationPolicy(fee_rate_per_side=args.fee,
@@ -46,7 +50,7 @@ def main(argv=None):
             history, initial["missing_sessions"], symbol=args.symbol)
     secondary = {"state": "NOT_NEEDED", "recovered": [], "unresolved": []}
     if recovery.get("unresolved"):
-        if os.getenv("EODHD_API_TOKEN"):
+        if args.use_eodhd and os.getenv("EODHD_API_TOKEN"):
             def secondary_fetch(symbol, start, end):
                 return verified_eodhd_daily(symbol, start, end, reference=history)
             history, secondary = recover_missing_sessions(
@@ -54,14 +58,14 @@ def main(argv=None):
                 fetcher=secondary_fetch)
             secondary["source"] = "EODHD_VERIFIED_NEIGHBOR_CLOSES"
         else:
-            secondary = {"state": "NOT_CONFIGURED", "recovered": [],
-                         "unresolved": recovery["unresolved"]}
+            secondary = {"state": "NOT_CONFIGURED" if args.use_eodhd else "DISABLED_BY_DEFAULT",
+                         "recovered": [], "unresolved": recovery["unresolved"]}
     result = validated_backtest(history, symbol=args.symbol, market=args.market,
                                 as_of_utc=now, simulation_policy=policy,
                                 min_sessions=args.min_sessions)
     if result["state"] == "REJECT":
         diagnostic = None
-        if args.diagnose_eodhd and os.getenv("EODHD_API_TOKEN") and secondary.get("unresolved"):
+        if args.diagnose_eodhd and args.use_eodhd and os.getenv("EODHD_API_TOKEN") and secondary.get("unresolved"):
             diagnostic = diagnose_eodhd_neighbors(
                 args.symbol, secondary["unresolved"][0], reference=history)
         print(json.dumps({**result, "recovery": recovery,
