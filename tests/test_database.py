@@ -34,7 +34,7 @@ class DatabaseFoundationTests(unittest.TestCase):
             }.issubset(names))
             self.assertEqual(conn.execute(
                 "SELECT COUNT(*) FROM schema_migrations"
-            ).fetchone()[0], 1)
+            ).fetchone()[0], SCHEMA_VERSION)
             self.assertEqual(conn.execute("PRAGMA journal_mode").fetchone()[0], "wal")
             self.assertEqual(conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
 
