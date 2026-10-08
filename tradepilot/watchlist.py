@@ -94,7 +94,7 @@ def update_watchlist(
                 raise ValueError("scan is older than existing symbol observation")
             new_state = "PROMOTED" if item["opportunity_score"] >= PROMOTION_SCORE else "WATCHING"
             # An explicitly REMOVED symbol must not be silently reactivated.
-            if current is not None and current["state"] == "REMOVED":
+            if current is not None and current["state"] in ("REMOVED", "EXPIRED"):
                 continue
             if current is not None and current["last_seen_at_utc"] == preview["observed_at_utc"]:
                 # Same scan replay: do not generate duplicate audit events.
