@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from data_fetcher import get_price_history
@@ -9,6 +10,7 @@ from tradepilot.opportunity_monitor import classify_opportunity, opportunity_his
 from tradepilot.breakout_confirmation import confirm_breakout, ConfirmationPolicy
 from tradepilot.opportunity_ranking import rank_opportunity
 from tradepilot.opportunity_categories import research_category, CATEGORY_ORDER
+from tradepilot.opportunity_detail import explain_opportunity
 from tradepilot.setup_view import completed_history
 from tradepilot.watchlist import list_watchlist
 
@@ -41,7 +43,7 @@ with st.expander("Phase 3.6 · Historical breakout confirmation filters"):
 settings = (near, volume_ratio, persistence, breakout_pct)
 if st.button("Refresh opportunity monitor", type="primary"):
     now = datetime.now(timezone.utc)
-    rows, histories = [], {}
+    rows, histories, detail_bars, detail_components = [], {}, {}, {}
     progress = st.progress(0)
     for i, item in enumerate(entries):
         symbol, market = item["symbol"], item["market"]
@@ -76,6 +78,9 @@ if st.button("Refresh opportunity monitor", type="primary"):
                 })
                 ranked = rank_opportunity(result, confirmation,
                                           history_evidence=evidence)
+                if ranked["eligible"]:
+                    detail_bars[(symbol, market)] = completed.tail(90).copy()
+                    detail_components[(symbol, market)] = ranked["components"]
                 histories[(symbol, market)] = opportunity_history(
                     completed, near_pct=near
                 )
@@ -99,6 +104,8 @@ if st.button("Refresh opportunity monitor", type="primary"):
         progress.progress((i + 1) / len(entries))
     st.session_state["opportunity_rows"] = rows
     st.session_state["opportunity_histories"] = histories
+    st.session_state["opportunity_detail_bars"] = detail_bars
+    st.session_state["opportunity_detail_components"] = detail_components
     st.session_state["opportunity_settings"] = settings
     st.session_state["opportunity_as_of"] = now.isoformat()
 
@@ -142,6 +149,63 @@ if rows is not None:
                     st.dataframe(group[["Symbol", "Market", "Ranking score", "Distance %",
                                         "Volume ratio", "Confirmation", "Last session"]],
                                  hide_index=True, use_container_width=True)
+        st.subheader("Phase 3.8 · Opportunity detail & decision explanation")
+        eligible = df.loc[df["Ranking score"].notna()]
+        if not eligible.empty:
+            choices = [(r["Symbol"], r["Market"]) for _, r in eligible.iterrows()]
+            chosen = st.selectbox("Inspect ranked symbol", choices,
+                                  format_func=lambda key: f"{key[0]} ({key[1]})",
+                                  key="opportunity_detail_selection")
+            item = df.loc[(df["Symbol"] == chosen[0]) &
+                          (df["Market"] == chosen[1])].iloc[0].to_dict()
+            parts = st.session_state.get("opportunity_detail_components", {}).get(chosen, {})
+            explanation = explain_opportunity(item, parts)
+            st.markdown(f"**{explanation['headline']}**")
+            st.caption(f"Category: {item['Research category']} · Historical ranking: "
+                       f"{item['Ranking score']:.2f}/100 · Last completed session: "
+                       f"{item['Last session']} · Research only")
+            metrics = st.columns(4)
+            currency = "MXN" if chosen[1] == "MX" else "USD"
+            metrics[0].metric("Last completed close", f"{item['Last close']:.2f} {currency}")
+            metrics[1].metric("Prior resistance", f"{item['Prior resistance']:.2f} {currency}")
+            metrics[2].metric("Distance to resistance", f"{item['Distance %']:.3f}%")
+            metrics[3].metric("Relative volume", f"{item['Volume ratio']:.3f}x")
+            bars = st.session_state.get("opportunity_detail_bars", {}).get(chosen)
+            if isinstance(bars, pd.DataFrame) and not bars.empty:
+                fig = go.Figure(data=[go.Candlestick(
+                    x=bars.index, open=bars["Open"], high=bars["High"],
+                    low=bars["Low"], close=bars["Close"],
+                    name="Completed daily bars")])
+                fig.add_hline(y=float(item["Prior resistance"]),
+                              line_dash="dash", line_color="#d69e2e",
+                              annotation_text="Prior resistance (research)")
+                fig.update_layout(height=440, xaxis_rangeslider_visible=False,
+                                  title="Completed daily candles · NOT live prices",
+                                  yaxis_title=f"Price ({currency})")
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("Reference resistance excludes the latest completed candle. "
+                           "Historical OHLCV adjustment/provenance is not independently verified.")
+            if parts:
+                breakdown = pd.DataFrame([
+                    {"Component": name.title(), "Points": points, "Maximum": maximum}
+                    for name, points, maximum in (
+                        ("proximity", parts.get("proximity", 0), 30),
+                        ("volume", parts.get("volume", 0), 20),
+                        ("trend", parts.get("trend", 0), 20),
+                        ("persistence", parts.get("persistence", 0), 20),
+                        ("freshness", parts.get("freshness", 0), 10))
+                ])
+                st.markdown("**Ranking breakdown (heuristic, not probability)**")
+                st.dataframe(breakdown, hide_index=True, use_container_width=True)
+            st.markdown("**Historical confirmation checks**")
+            st.write("Confirmation:", item.get("Confirmation"))
+            st.write("Persistence:", item.get("Persistence"))
+            st.write("Reasons:", explanation["reasons"])
+            st.info("Decision: RESEARCH / WAIT. No verified live quote, "
+                    "instrument tradability, broker order, or expected profitability. "
+                    "Ranking and historical confirmation are NOT buy signals.")
+        else:
+            st.info("No verified ranked opportunities available for detailed analysis.")
         missing = df.loc[df["Status"] == "INSUFFICIENT_DATA", ["Symbol", "Market", "Reason"]]
         if not missing.empty:
             st.warning(f"{len(missing)} symbols lack verified completed data; exclude from ranking.")
