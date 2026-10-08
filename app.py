@@ -10,10 +10,10 @@ from config import (
     APP_VERSION, APP_BUILD, UNIVERSES, DYNAMIC_UNIVERSES,
 )
 
-st.set_page_config(page_title="3% Trading Bot", page_icon="📈", layout="wide")
+st.set_page_config(page_title="TradePilot", page_icon="📈", layout="wide")
 title_col, version_col = st.columns([5, 2])
 with title_col:
-    st.title("📈 3% Trading Bot")
+    st.title("📈 TradePilot")
 with version_col:
     st.markdown(f"### 🟢 v{APP_VERSION}")
     st.caption(f"development · {APP_BUILD}")
