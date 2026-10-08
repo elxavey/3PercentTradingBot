@@ -13,6 +13,7 @@ from tradepilot.opportunity_categories import research_category, CATEGORY_ORDER
 from tradepilot.opportunity_detail import explain_opportunity
 from tradepilot.setup_view import completed_history
 from tradepilot.watchlist import list_watchlist
+from tradepilot.scan_monitor_source import scan_monitor_entries
 
 st.set_page_config(page_title="TradePilot | Opportunity Monitor", page_icon="🔎", layout="wide")
 st.title("🔎 TradePilot — Opportunity Monitor")
@@ -22,15 +23,42 @@ st.warning(
     "NOT verified live breakouts, buy signals or broker orders. Historical "
     "adjustment/provenance is not independently verified."
 )
+source = st.radio(
+    "Research source", ["Active Watchlist", "Saved scan (read-only)"],
+    horizontal=True, key="opportunity_source",
+)
+scan_id = ""
+scan_limit = 20
+if source == "Saved scan (read-only)":
+    scan_id = st.text_input(
+        "Successful saved scan ID",
+        value="534062a7-4de5-4ab3-8018-189d95e682d3",
+        help="Read-only historical scan candidates; does not update Watchlist.",
+    ).strip()
+    scan_limit = st.slider("Candidates to inspect", 1, 50, 20)
 try:
-    entries = [x for x in list_watchlist() if x["state"] in ("WATCHING", "PROMOTED")]
+    if source == "Active Watchlist":
+        entries = [x for x in list_watchlist() if x["state"] in ("WATCHING", "PROMOTED")]
+    else:
+        preview = scan_monitor_entries(scan_id, limit=scan_limit)
+        entries = preview["entries"]
+        st.caption(
+            f"Saved scan: {preview['universe_name']} · "
+            f"Finished UTC: {preview['finished_at_utc']} · "
+            f"Selected: {len(entries)}. Historical scanner score is NOT "
+            "the technical Opportunity Monitor ranking."
+        )
 except Exception as exc:
-    st.error(f"Watchlist unavailable: {type(exc).__name__}: {exc}")
+    st.error(f"Research source unavailable: {type(exc).__name__}: {exc}")
     st.stop()
 
 if not entries:
-    st.info("No active Watchlist entries.")
+    st.info("No candidates in selected research source.")
     st.stop()
+
+source_key = (source, scan_id if source == "Saved scan (read-only)" else "",
+              scan_limit if source == "Saved scan (read-only)" else 0,
+              tuple((e["symbol"], e["market"]) for e in entries))
 
 near = st.slider("Near resistance threshold (%)", min_value=0.5, max_value=10.0,
                  value=3.0, step=0.5)
@@ -102,6 +130,7 @@ if st.button("Refresh opportunity monitor", type="primary"):
                     "Ranking reason": ranked["ranking_reason"]})
         rows.append(row)
         progress.progress((i + 1) / len(entries))
+    st.session_state["opportunity_source_key"] = source_key
     st.session_state["opportunity_rows"] = rows
     st.session_state["opportunity_histories"] = histories
     st.session_state["opportunity_detail_bars"] = detail_bars
@@ -109,7 +138,10 @@ if st.button("Refresh opportunity monitor", type="primary"):
     st.session_state["opportunity_settings"] = settings
     st.session_state["opportunity_as_of"] = now.isoformat()
 
-rows = st.session_state.get("opportunity_rows")
+rows = (st.session_state.get("opportunity_rows")
+        if st.session_state.get("opportunity_source_key") == source_key else None)
+if rows is None and st.session_state.get("opportunity_rows") is not None:
+    st.info("Research source changed. Click Refresh to analyze this selection.")
 if rows is not None:
     if st.session_state.get("opportunity_settings") != settings:
         st.info("Threshold changed. Click Refresh to recalculate.")
