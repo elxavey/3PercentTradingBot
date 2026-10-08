@@ -45,10 +45,12 @@ def derive_levels(history: pd.DataFrame, *, lookback: int = 20,
         return {"state": "WAIT", "reasons": ["UNORDERED_OR_DUPLICATE_BARS"]}
     if not pd.notna(values).all() or not all(isfinite(x) for row in values for x in row):
         return {"state": "WAIT", "reasons": ["INVALID_OHLCV"]}
-    if ((data[["Open", "High", "Low", "Close"]] <= 0).any().any()
+    # Float-adjusted Yahoo OHLC values may differ at machine precision.
+    # Relative tolerance 1e-12; do not round or mutate source prices.
+    tolerance = data[["Open", "High", "Low", "Close"]].abs().max(axis=1) * 1e-12\n    if ((data[["Open", "High", "Low", "Close"]] <= 0).any().any()
             or (data["Volume"] < 0).any()
-            or (data["High"] < data[["Open", "Low", "Close"]].max(axis=1)).any()
-            or (data["Low"] > data[["Open", "High", "Close"]].min(axis=1)).any()):
+            or (data["High"] + tolerance < data[["Open", "Low", "Close"]].max(axis=1)).any()
+            or (data["Low"] - tolerance > data[["Open", "High", "Close"]].min(axis=1)).any()):
         return {"state": "WAIT", "reasons": ["INVALID_OHLCV"]}
     recent = data.tail(lookback)
     resistance = float(recent["High"].max())
