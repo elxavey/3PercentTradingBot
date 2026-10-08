@@ -154,11 +154,14 @@ def main(argv: list[str] | None = None) -> int:
                         choices=list(UNIVERSES) + list(DYNAMIC_UNIVERSES))
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH))
     parser.add_argument("--slot", help="UTC ISO-8601 unique job slot (optional)")
-    parser.add_argument("--interrupt-job", help="Manually mark an abandoned RUNNING job interrupted")
+    parser.add_argument("--interrupt-job", help="Recover an abandoned RUNNING job after verifying its process stopped")
+    parser.add_argument("--confirm-stopped", action="store_true", help="Confirm the previous worker process has stopped")
     args = parser.parse_args(argv)
     try:
         if args.interrupt_job:
-            changed = interrupt_stale_job(db_path=args.db, job_id=args.interrupt_job)
+            from tradepilot.recovery import recover_interrupted_job
+            changed = recover_interrupted_job(db_path=args.db, job_id=args.interrupt_job,
+                                              confirmed_stopped=args.confirm_stopped)
             print("INTERRUPTED" if changed else "NOT FOUND / NOT RUNNING")
             return 0 if changed else 2
         code, _ = execute_once(universe_name=args.universe, db_path=args.db,
