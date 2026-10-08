@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterator
 
 DEFAULT_DB_PATH = Path("data") / "tradepilot.db"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _MIGRATION_1 = """
 CREATE TABLE IF NOT EXISTS job_runs (
@@ -98,6 +98,12 @@ CREATE TABLE scan_run_telemetry (
 """
 
 
+_MIGRATION_3 = """
+ALTER TABLE job_runs ADD COLUMN heartbeat_at_utc TEXT;
+CREATE INDEX idx_job_runs_status_heartbeat ON job_runs(status, heartbeat_at_utc);
+"""
+
+
 def connect_database(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Open a configured connection. Caller owns and closes it."""
     path = Path(db_path)
@@ -151,6 +157,14 @@ def initialize_database(db_path: str | Path = DEFAULT_DB_PATH) -> int:
             connection.execute(
                 "INSERT INTO schema_migrations(version, applied_at_utc) "
                 "VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+            )
+        if current < 3:
+            for statement in _MIGRATION_3.split(";"):
+                if statement.strip():
+                    connection.execute(statement)
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at_utc) "
+                "VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
             )
         connection.commit()
         return SCHEMA_VERSION
