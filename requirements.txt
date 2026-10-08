@@ -5,3 +5,4 @@ tabulate
 streamlit
 numpy
 python-dotenv
+exchange-calendars>=4.5,<5
