@@ -28,10 +28,10 @@ class HistoricalSimulatorTests(unittest.TestCase):
 
     def test_gap_through_stop(self):
         h = bars([(100,101,99,100,1000),(100,101,99,100,1000),
-                  (95,96,93,94,1000)])
+                  (100,101,99,100,1000),(95,96,93,94,1000)])
         t = simulate_trades(h, signal("2026-01-06"))["trades"][0]
-        self.assertEqual(t["exit_reason"], "STOP")
-        self.assertAlmostEqual(t["entry_price"], 95)
+        self.assertEqual(t["exit_reason"], "STOP_GAP")
+        self.assertAlmostEqual(t["exit_price"], 95)
 
     def test_costs_reduce_net(self):
         h = bars([(100,101,99,100,1000),(100,101,99,100,1000),
