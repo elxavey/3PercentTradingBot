@@ -9,6 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INSTALL = (ROOT / "scripts" / "install_windows_task.ps1").read_text(encoding="utf-8")
 LAUNCH = (ROOT / "scripts" / "run_scheduled_scan.ps1").read_text(encoding="utf-8")
+HIDDEN = (ROOT / "scripts" / "run_hidden_scheduler.vbs").read_text(encoding="utf-8")
+CONVERT = (ROOT / "scripts" / "enable_hidden_windows_task.ps1").read_text(encoding="utf-8")
 
 
 class WindowsTaskIntegrationTests(unittest.TestCase):
@@ -46,6 +48,23 @@ class WindowsTaskIntegrationTests(unittest.TestCase):
     def test_launcher_writes_diagnostic_log(self):
         self.assertIn("windows_scheduler.log", LAUNCH)
         self.assertIn("$LASTEXITCODE", LAUNCH)
+
+    def test_hidden_launcher_waits_and_propagates_exit_code(self):
+        self.assertIn('shell.Run(command, 0, True)', HIDDEN)
+        self.assertIn('WScript.Quit exitCode', HIDDEN)
+        self.assertIn('-EncodedCommand', HIDDEN)
+        self.assertNotIn('tradepilot.worker', HIDDEN)
+
+    def test_hidden_conversion_is_opt_in_and_preserves_schedule(self):
+        self.assertIn('SupportsShouldProcess = $true', CONVERT)
+        self.assertIn('$PSCmdlet.ShouldProcess(', CONVERT)
+        self.assertIn('Get-ScheduledTask -TaskName $TaskName', CONVERT)
+        self.assertIn('Set-ScheduledTask -TaskName $TaskName -Action $action', CONVERT)
+        self.assertNotIn('Register-ScheduledTask', CONVERT)
+        self.assertNotIn('Unregister-ScheduledTask', CONVERT)
+        self.assertNotIn('New-ScheduledTaskTrigger', CONVERT)
+        self.assertIn('run_scheduled_scan', CONVERT)
+        self.assertIn('wscript.exe', CONVERT)
 
     def test_installer_requires_virtualenv(self):
         self.assertIn(".venv\\Scripts\\python.exe", INSTALL)
