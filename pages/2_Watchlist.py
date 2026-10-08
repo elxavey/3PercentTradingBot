@@ -1,11 +1,11 @@
-"""TradePilot Phase 2.1 watchlist explorer and explicit promotion controls."""
+"""TradePilot Phase 2.2 watchlist lifecycle and conservative session expiry."""
 import pandas as pd
 import streamlit as st
 
 from tradepilot.monitoring_view import local_timestamp
 from tradepilot.storage.scan_repository import list_scans
 from tradepilot.watchlist import (
-    list_watchlist, preview_watchlist, set_watchlist_state,
+    apply_session_expiry, list_watchlist, preview_session_expiry,\n    preview_watchlist, set_watchlist_state,
     update_watchlist, watchlist_history,
 )
 
@@ -115,3 +115,36 @@ if st.button("Apply selected scan to watchlist", type="primary", disabled=not pr
     else:
         st.success(f"Updated {result['promoted_or_refreshed']} entries. Older entries retained.")
         st.rerun()
+
+st.divider()
+st.subheader("Session-based expiry · explicit review")
+st.caption(
+    "Only symbols evaluated as Quality Gate FAIL in 3 consecutive open "
+    "exchange sessions of the same universe can expire. Missing candidates "
+    "and skipped sessions never count as failures."
+)
+try:
+    expiry_preview = preview_session_expiry(scan_id, failed_sessions=3)
+except (ValueError, KeyError) as exc:
+    st.error(f"Expiry preview unavailable: {exc}")
+else:
+    st.metric("Eligible for expiry", len(expiry_preview["items"]))
+    if expiry_preview["items"]:
+        st.dataframe(
+            pd.DataFrame(expiry_preview["items"]),
+            use_container_width=True, hide_index=True,
+        )
+        confirm_expiry = st.checkbox(
+            "I reviewed these candidates and authorize expiring them",
+            key="confirm_session_expiry",
+        )
+        if st.button("Apply session expiry", disabled=not confirm_expiry):
+            try:
+                expiry_result = apply_session_expiry(scan_id, failed_sessions=3)
+            except (ValueError, KeyError) as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"Expired {expiry_result['expired']} candidates.")
+                st.rerun()
+    else:
+        st.info("No candidates qualify for session-based expiry in this scan.")
