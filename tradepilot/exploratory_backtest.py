@@ -62,10 +62,10 @@ def exploratory_backtest(history, *, symbol: str, market: str,
             chunk.append(day)
     if chunk:
         boundaries.append(chunk)
-    all_trades, signals, excluded, evaluated = [], 0, 0, 0
+    # Preserve provider timestamps and timezones; select by exchange-local date.\n    date_positions = {stamp.date(): i for i, stamp in enumerate(completed.index)}\n    all_trades, signals, excluded, evaluated = [], 0, 0, 0
     limitations = []
     for days in boundaries:
-        segment = completed.loc[[pd.Timestamp(d) for d in days]]
+        segment = completed.iloc[[date_positions[d] for d in days]]
         # Replay needs its full warmup; segments without it cannot generate signals.
         if len(segment) < 100:
             excluded += 1
