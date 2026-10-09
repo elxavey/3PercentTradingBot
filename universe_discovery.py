@@ -44,7 +44,7 @@ def _discover_region(region: str, target: int) -> list[str]:
 
         for quote in quotes:
             symbol = quote.get("symbol")
-                if is_common_equity_quote(quote) and symbol not in symbols:
+            if is_common_equity_quote(quote) and symbol not in symbols:
                 symbols.append(symbol)
 
         if len(quotes) < page_size:
