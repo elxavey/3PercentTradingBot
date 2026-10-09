@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 from config import BREAKOUT_TEST_SYMBOLS, UNIVERSES
 from tradepilot.breakout_shortlist_cli import shortlist
-from tradepilot.morning_report import run_market_report
 
 st.set_page_config(page_title="TradePilot | Breakout Radar", page_icon="📡", layout="wide")
 st.title("📡 Breakout Opportunity Radar")
@@ -51,7 +50,7 @@ if top:
     table = pd.DataFrame([{
         "Symbol": r.get("symbol"), "State": r.get("state"),
         "Score / 100": r.get("quality_score"),
-        "Close": r.get("reference_close"), "Trigger": r.get("breakout_trigger"),
+        "Close": r.get("reference_close"), "Trigger": round(r["breakout_trigger"], 2) if r.get("breakout_trigger") is not None else None,
         "Distance %": r.get("distance_to_trigger_pct"),
         "Relative volume": r.get("relative_volume"),
         "Bar date": r.get("session"),
@@ -86,20 +85,21 @@ if morning_output.exists():
         for market, label in (("MX", "🇲🇽 Mexico (MXN)"), ("US", "🇺🇸 United States (USD)")):
             st.markdown(f"#### {label}")
             section = morning.get("markets", {}).get(market, {})
-            st.caption(f"Reviewed {section.get('reviewed', 0)} | current daily data {section.get('current', 0)} | rejected/error {section.get('rejected_or_error', 0)}")
+            st.caption(f"Reviewed {section.get('reviewed', 0)} | current daily data {section.get('current', 0)} | rejected/error {section.get('rejected_or_error', 0)} | risk-filtered {section.get('risk_filtered', 0)}")
             for tier, heading in (("primary", "Confirmed research (max 10)"), ("watch", "Watch candidates (max 3)")):
                 st.markdown(f"**{heading}**")
                 records = []
                 for r in section.get(tier, []):
                     plan = r.get("trade_plan") or {}
                     records.append({
-                        "Symbol": r.get("symbol"), "State": r.get("state"),
-                        "Last daily close": r.get("reference_close"),
+                        "Symbol": r.get("symbol"), "State": {"APPROACHING": "Near breakout", "BREAKOUT_PENDING_CONFIRMATION": "Pending confirmation", "CONFIRMED_RESEARCH": "Research confirmed"}.get(r.get("state"), r.get("state")),
+                        "Risk assessment": r.get("risk_assessment", "N/A"),
+                        "Last daily close": round(r["reference_close"], 2) if r.get("reference_close") is not None else None,
                         "Daily bar date": r.get("session"),
-                        "Breakout trigger": r.get("breakout_trigger"),
-                        "Illustrative entry": plan.get("entry_reference"),
-                        "Illustrative target": plan.get("target_exit_reference"),
-                        "Structural stop": plan.get("stop_reference"),
+                        "Breakout trigger": round(r["breakout_trigger"], 2) if r.get("breakout_trigger") is not None else None,
+                        "Illustrative entry": round(plan["entry_reference"], 2) if plan.get("entry_reference") is not None else None,
+                        "Illustrative target": round(plan["target_exit_reference"], 2) if plan.get("target_exit_reference") is not None else None,
+                        "Structural stop": round(plan["stop_reference"], 2) if plan.get("stop_reference") is not None else None,
                         "Net target % (assumed)": plan.get("estimated_net_target_pct"),
                         "Reward/risk (assumed)": plan.get("reward_risk_net"),
                         "Score (not probability)": r.get("quality_score"),
@@ -109,7 +109,7 @@ if morning_output.exists():
                     st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
                 else:
                     st.caption("No candidates in this category.")
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         st.warning(f"Morning report unavailable: {exc}")
 else:
     st.info("Generate the first daily report with: python -m tradepilot.morning_report_cli --universe test20")
