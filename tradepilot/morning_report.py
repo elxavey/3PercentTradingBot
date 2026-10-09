@@ -7,6 +7,16 @@ from data_fetcher import get_price_history
 
 PRIMARY = "CONFIRMED_RESEARCH"
 WATCH = ("BREAKOUT_PENDING_CONFIRMATION", "APPROACHING")
+MIN_REWARD_RISK = 1.0  # Provisional research gate; not empirically optimized.
+
+
+def risk_label(row):
+    plan = row.get("trade_plan") or {}
+    ratio = plan.get("reward_risk_net")
+    if plan.get("plan_state") != "ILLUSTRATIVE_UNTRIGGERED" or not isinstance(ratio, (int, float)):
+        return "RISK_UNAVAILABLE"
+    return "RISK_ACCEPTABLE_FOR_RESEARCH" if ratio >= MIN_REWARD_RISK else "UNFAVORABLE_RISK_REWARD"
+
 
 
 def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
@@ -28,6 +38,8 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
         except Exception as exc:
             row = {"symbol": symbol, "state": "ERROR",
                    "reason": type(exc).__name__, "detail": str(exc)[:160], "actionable": False}
+        if row.get("state") in (PRIMARY, *WATCH):
+            row["risk_assessment"] = risk_label(row)
         rows.append(row)
         timings.append(perf_counter() - t)
         if progress:
@@ -36,12 +48,13 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
     for market in ("MX", "US"):
         local = [r for r in rows if r["symbol"].endswith(".MX") == (market == "MX")]
         valid = [r for r in local if (r.get("session_quality") or {}).get("state") == "CURRENT"]
-        primary = sorted((r for r in valid if r["state"] == PRIMARY),
+        primary = sorted((r for r in valid if r["state"] == PRIMARY and r.get("risk_assessment") == "RISK_ACCEPTABLE_FOR_RESEARCH"),
                          key=lambda r: (-r["quality_score"], r["symbol"]))[:primary_limit]
-        watch = sorted((r for r in valid if r["state"] in WATCH),
+        watch = sorted((r for r in valid if r["state"] in WATCH or (r["state"] == PRIMARY and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH")),
                        key=lambda r: (-r["quality_score"], r["symbol"]))[:watch_limit]
         markets[market] = {"reviewed": len(local), "current": len(valid),
                            "primary": primary, "watch": watch,
+                           "risk_filtered": sum(r["state"] == PRIMARY and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH" for r in valid),
                            "rejected_or_error": sum(r["state"] in ("REJECT", "ERROR") for r in local)}
     elapsed = perf_counter() - started
     return {"state": "DAILY_RESEARCH_REPORT", "as_of_utc": now.isoformat(),
@@ -50,6 +63,7 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
             "fetch_and_analysis_seconds": round(sum(timings), 3),
             "mean_symbol_seconds": round(sum(timings) / len(timings), 3) if timings else None,
             "estimated_1000_seconds_linear": round(elapsed * 1000 / len(requested), 1) if requested else None,
+            "risk_policy": {"min_reward_risk": MIN_REWARD_RISK, "status": "PROVISIONAL_NOT_BACKTEST_VALIDATED"},
             "research_only": True, "actionable": False,
             "limitations": ["EOD_ONLY_NOT_INTRADAY", "NO_VERIFIED_LIVE_QUOTE",
                             "NO_OOS_VALIDATION", "NO_AUTOMATED_BROKER_ORDERS",
