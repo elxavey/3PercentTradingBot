@@ -7,7 +7,7 @@ from tradepilot.breakout_shortlist_cli import analyze_symbol, shortlist
 
 
 def bars(last_close=98):
-    dates = pd.bdate_range("2026-07-01", periods=30)
+    dates = pd.bdate_range(end="2026-10-08", periods=30)
     close = [95.0] * 29 + [last_close]
     high = [100.0] * 29 + [max(100.0, last_close)]
     return pd.DataFrame({"Open": [95.0] * 30, "High": high,
@@ -17,7 +17,7 @@ def bars(last_close=98):
 
 class BreakoutShortlistTests(unittest.TestCase):
     def setUp(self):
-        self.now = datetime(2026, 10, 8, tzinfo=timezone.utc)
+        self.now = datetime(2026, 10, 9, 3, 44, tzinfo=timezone.utc)
 
     def test_universe_excludes_crypto_and_futures(self):
         self.assertEqual(UNIVERSES["Breakout test - user equities"], BREAKOUT_TEST_SYMBOLS)
@@ -28,6 +28,7 @@ class BreakoutShortlistTests(unittest.TestCase):
     def test_approaching_has_trigger_and_no_action(self):
         r = analyze_symbol("TEST", bars(), as_of_utc=self.now)
         self.assertEqual(r["state"], "APPROACHING")
+        self.assertEqual(r["session_quality"]["state"], "CURRENT")
         self.assertAlmostEqual(r["breakout_trigger"], 100.1)
         self.assertFalse(r["actionable"])
 
@@ -39,7 +40,7 @@ class BreakoutShortlistTests(unittest.TestCase):
 
     def test_current_utc_date_excluded(self):
         data = bars()
-        data.loc[pd.Timestamp("2026-10-08")] = [95, 200, 90, 199, 200000]
+        data.loc[pd.Timestamp("2026-10-09")] = [95, 200, 90, 199, 200000]
         r = analyze_symbol("TEST", data, as_of_utc=self.now)
         self.assertEqual(r["state"], "APPROACHING")
 
@@ -57,6 +58,18 @@ class BreakoutShortlistTests(unittest.TestCase):
         r = analyze_symbol("TEST", data, as_of_utc=self.now)
         self.assertEqual(r["state"], "REJECT")
         self.assertEqual(r["reason"], "INVALID_OHLCV")
+
+    def test_stale_completed_session_excluded_from_top(self):
+        old = bars().iloc[:-1]
+        report = shortlist(["OLD"], fetcher=lambda s, period: old, as_of_utc=self.now)
+        self.assertEqual(report["top"], [])
+        self.assertEqual(report["results"][0]["session_quality"]["state"], "STALE")
+
+    def test_volume_confirmation_not_automatic(self):
+        r = analyze_symbol("TEST", bars(101), as_of_utc=self.now)
+        self.assertEqual(r["state"], "BREAKOUT_PENDING_CONFIRMATION")
+        self.assertFalse(r["confirmation_checks"]["relative_volume_at_least_1_5"])
+        self.assertFalse(r["actionable"])
 
     def test_low_liquidity_rejected(self):
         r = analyze_symbol("TEST", bars(), min_turnover=100_000_000,
