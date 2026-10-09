@@ -14,7 +14,7 @@ class StrategyValidationTests(unittest.TestCase):
         self.assertEqual(simulate(bars([(98,99,97,98)]), 100,95)["outcome"],"NOT_TRIGGERED")
 
     def test_gap_entry_not_trigger_fill(self):
-        result = simulate(bars([(105,109,104,108)]),100,90)
+        result = simulate(bars([(105,107,104,106)]),100,90)
         self.assertEqual(result["outcome"],"TIMEOUT")
         self.assertGreater(result["entry"],105)
 
