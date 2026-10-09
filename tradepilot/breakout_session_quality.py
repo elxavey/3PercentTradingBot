@@ -32,6 +32,7 @@ def assess_daily_sessions(history, *, market: str, as_of_utc: datetime, max_lag_
     missing = sorted(expected - actual)
     if missing:
         return {"state": "REJECT", "reason": "MISSING_EXCHANGE_SESSIONS",
+                "last_bar": last.isoformat(), "expected_last_session": dates[-1].isoformat(),
                 "missing_sessions": [x.isoformat() for x in missing[:20]],
                 "missing_sessions_count": len(missing)}
     return {"state": "CURRENT" if lag <= max_lag_sessions else "STALE",
