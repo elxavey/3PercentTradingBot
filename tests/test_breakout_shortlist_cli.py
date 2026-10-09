@@ -43,6 +43,21 @@ class BreakoutShortlistTests(unittest.TestCase):
         r = analyze_symbol("TEST", data, as_of_utc=self.now)
         self.assertEqual(r["state"], "APPROACHING")
 
+    def test_completed_terminal_empty_bar_is_excluded(self):
+        data = bars()
+        data.loc[pd.Timestamp("2026-10-08")] = [float("nan")] * 4 + [200000]
+        now = datetime(2026, 10, 9, 3, 44, tzinfo=timezone.utc)
+        r = analyze_symbol("TEST", data, as_of_utc=now)
+        self.assertEqual(r["state"], "APPROACHING")
+        self.assertEqual(r["excluded_terminal_bars"], ["2026-10-08"])
+
+    def test_interior_empty_bar_is_rejected(self):
+        data = bars()
+        data.iloc[-3, data.columns.get_loc("Close")] = float("nan")
+        r = analyze_symbol("TEST", data, as_of_utc=self.now)
+        self.assertEqual(r["state"], "REJECT")
+        self.assertEqual(r["reason"], "INVALID_OHLCV")
+
     def test_low_liquidity_rejected(self):
         r = analyze_symbol("TEST", bars(), min_turnover=100_000_000,
                            as_of_utc=self.now)
