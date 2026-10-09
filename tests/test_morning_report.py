@@ -2,7 +2,8 @@
 import unittest
 from datetime import datetime, timezone
 from tradepilot.breakout_trade_plan import build_trade_plan
-from tradepilot.morning_report import run_market_report
+from tradepilot.morning_report import run_market_report, risk_label
+from tradepilot.morning_email_preview import render_html
 
 
 class TradePlanTests(unittest.TestCase):
@@ -43,6 +44,19 @@ class MarketReportTests(unittest.TestCase):
         self.assertLessEqual(len(report["markets"]["MX"]["watch"]), 1)
         self.assertLessEqual(len(report["markets"]["US"]["watch"]), 1)
         self.assertFalse(report["actionable"])
+
+    def test_provisional_risk_gate(self):
+        self.assertEqual(risk_label({"trade_plan": {"plan_state": "ILLUSTRATIVE_UNTRIGGERED", "reward_risk_net": 0.28}}), "UNFAVORABLE_RISK_REWARD")
+        self.assertEqual(risk_label({"trade_plan": {"plan_state": "ILLUSTRATIVE_UNTRIGGERED", "reward_risk_net": 1.5}}), "RISK_ACCEPTABLE_FOR_RESEARCH")
+        self.assertEqual(risk_label({}), "RISK_UNAVAILABLE")
+
+    def test_html_safe_and_rounded(self):
+        report = {"as_of_utc": "2026-10-09", "markets": {"MX": {"reviewed": 1, "current": 1, "primary": [], "watch": [{"symbol": "<X>", "state": "APPROACHING", "reference_close": 47.639999, "breakout_trigger": 48.1, "trade_plan": {"reward_risk_net": 0.28}}]}, "US": {}}}
+        html = render_html(report)
+        self.assertIn("&lt;X&gt;", html)
+        self.assertIn("47.64", html)
+        self.assertNotIn("47.639999", html)
+        self.assertIn("Riesgo/beneficio desfavorable", html)
 
     def test_limits_rejected(self):
         with self.assertRaises(ValueError):
