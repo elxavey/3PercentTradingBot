@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
+import time
 from datetime import datetime, timezone
 from math import isfinite
 from data_fetcher import get_price_history
@@ -41,7 +43,7 @@ def latest_scan_symbols(limit=62, db_path=DEFAULT_DB_PATH):
     return normalize_symbols(names)
 
 def evaluate(symbols, *, fee, slippage, capital=10000.0, risk_pct=1.0,
-             strict=False, fetcher=None, runner=None, as_of_utc=None):
+             strict=False, fetcher=None, runner=None, as_of_utc=None, progress=None):
     names = normalize_symbols(symbols)
     now = as_of_utc or datetime.now(timezone.utc)
     if now.utcoffset() is None:
@@ -50,12 +52,18 @@ def evaluate(symbols, *, fee, slippage, capital=10000.0, risk_pct=1.0,
     fetcher = fetcher or get_price_history
     runner = runner or (validated_backtest if strict else exploratory_backtest)
     rows = []
-    for symbol in names:
+    started = time.monotonic()
+    for index, symbol in enumerate(names, 1):
+        symbol_started = time.monotonic()
+        if progress is not None:
+            progress(f'[{index}/{len(names)}] {symbol}: fetching history...')
         market = "MX" if symbol.endswith(".MX") else "US"
         try:
             history = fetcher(symbol, period="2y")
         except Exception as exc:
             rows.append({"symbol": symbol, "status": "ERROR", "error": str(exc)[:160]})
+            if progress is not None:
+                progress(f"[{index}/{len(names)}] {symbol}: FETCH ERROR ({time.monotonic()-symbol_started:.1f}s)")
             continue
         scenarios = []
         for stop in STOPS:
@@ -79,6 +87,9 @@ def evaluate(symbols, *, fee, slippage, capital=10000.0, risk_pct=1.0,
             except Exception as exc:
                 scenarios.append({"stop_pct": stop, "status": "ERROR", "error": str(exc)[:160]})
         rows.append({"symbol": symbol, "market": market, "scenarios": scenarios})
+        if progress is not None:
+            states = ", ".join(f"{case['stop_pct']}%={case['status']}" for case in scenarios)
+            progress(f"[{index}/{len(names)}] {symbol}: {states} ({time.monotonic()-symbol_started:.1f}s; total {time.monotonic()-started:.1f}s)")
     summary = []
     for i, stop in enumerate(STOPS):
         cases = [case for row in rows for case in row.get("scenarios", [])
@@ -122,7 +133,8 @@ def main(argv=None):
     else:
         symbols = args.symbols
     result = evaluate(symbols, fee=args.fee, slippage=args.slippage,
-                      capital=args.capital, risk_pct=args.risk_pct, strict=args.strict)
+                      capital=args.capital, risk_pct=args.risk_pct, strict=args.strict,
+                      progress=lambda message: print(message, file=sys.stderr, flush=True))
     print(json.dumps(result, indent=2, default=str, allow_nan=False))
     return 0 if all(s["status"] == "RESEARCH_RESULT"
                     for row in result["results"] for s in row.get("scenarios", [])) else 2
