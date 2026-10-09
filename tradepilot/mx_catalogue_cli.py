@@ -59,6 +59,28 @@ def import_official_export(path: Path):
     return list(dict.fromkeys(symbols)), rejected
 
 
+
+def read_bmv_issuers(path: Path):
+    """Read the actual BMV Capitales/Acciones issuer export, without guessing share series."""
+    df = pd.read_excel(path, sheet_name="DATOS", dtype=str) if path.suffix.lower() in (".xlsx", ".xls") else pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+    columns = {str(col).strip().upper(): col for col in df.columns}
+    if "CLAVE EMISORA" not in columns or "RAZON SOCIAL" not in columns:
+        raise ValueError("BMV file must have CLAVE EMISORA and RAZON SOCIAL columns")
+    issuers = {}
+    for _, row in df.iterrows():
+        key = str(row[columns["CLAVE EMISORA"]]).strip().upper()
+        name = str(row[columns["RAZON SOCIAL"]]).strip()
+        if key and key != "NAN":
+            issuers[key] = name
+    return issuers
+
+
+def issuer_match_candidates(issuer: str, symbols):
+    """Prefixes are review hints only, never confirmed exchange-series mappings."""
+    return sorted(s for s in symbols if s == issuer + ".MX" or
+                  (s.startswith(issuer) and s.endswith(".MX")))
+
+
 def build_catalogue(*, official_path=None, yahoo_target=1000):
     sources = {}
     for symbol in MEXICO_TICKERS + BREAKOUT_TEST_SYMBOLS:
@@ -69,10 +91,28 @@ def build_catalogue(*, official_path=None, yahoo_target=1000):
         if TICKER.fullmatch(symbol.upper()):
             sources.setdefault(symbol.upper(), set()).add("YAHOO_DISCOVERY")
     rejected = []
+    issuer_rows = []
     if official_path:
-        official_symbols, rejected = import_official_export(Path(official_path))
-        for symbol in official_symbols:
-            sources.setdefault(symbol, set()).add("OFFICIAL_EXPORT_EXPLICIT_MAPPING")
+        path = Path(official_path)
+        if path.suffix.lower() in (".xlsx", ".xls"):
+            # Recognize BMV's native issuer-key export separately from Yahoo symbol imports.
+            probe = pd.read_excel(path, sheet_name="DATOS", nrows=0) if "DATOS" in pd.ExcelFile(path).sheet_names else None
+            is_bmv = probe is not None and {"CLAVE EMISORA", "RAZON SOCIAL"}.issubset(
+                {str(col).strip().upper() for col in probe.columns})
+        else:
+            is_bmv = False
+        if is_bmv:
+            issuers = read_bmv_issuers(path)
+            for issuer, name in sorted(issuers.items()):
+                candidates = issuer_match_candidates(issuer, sources)
+                issuer_rows.append({"clave_emisora": issuer, "razon_social": name,
+                                    "yahoo_candidate_symbols": "|".join(candidates),
+                                    "mapping_status": "REVIEW_CANDIDATE" if candidates else "NO_CANDIDATE",
+                                    "mapping_verified": False})
+        else:
+            official_symbols, rejected = import_official_export(path)
+            for symbol in official_symbols:
+                sources.setdefault(symbol, set()).add("OFFICIAL_EXPORT_EXPLICIT_MAPPING")
     rows = []
     for symbol, origin in sorted(sources.items()):
         # Conservative review gate: a Yahoo quoteType of EQUITY alone does not
@@ -84,6 +124,8 @@ def build_catalogue(*, official_path=None, yahoo_target=1000):
     return {"generated_utc": datetime.now(timezone.utc).isoformat(),
             "requested_yahoo_mx": yahoo_target, "yahoo_discovered": len(yahoo_symbols),
             "catalogue_size": len(rows), "rows": rows,
+            "official_issuer_count": len(issuer_rows), "issuer_rows": issuer_rows,
+            "issuer_with_candidates": sum(bool(x["yahoo_candidate_symbols"]) for x in issuer_rows),
             "official_rejected_count": len(rejected), "official_rejected": rejected,
             "limitations": ["SYMBOL_MAPPING_REQUIRES_EXPLICIT_YAHOO_TICKER",
                             "CLASSIFICATION_NOT_VERIFIED",
@@ -93,7 +135,7 @@ def build_catalogue(*, official_path=None, yahoo_target=1000):
 def main(argv=None):
     p = argparse.ArgumentParser(description="Reviewable Mexican equity catalogue (research only)")
     p.add_argument("--official-file", type=Path, default=None,
-                   help="Optional BMV CSV/XLSX enriched with explicit yahoo_symbol column")
+                   help="BMV native DATOS Excel or CSV/XLSX with explicit yahoo_symbol column")
     p.add_argument("--yahoo-target", type=int, default=1000)
     p.add_argument("--output", type=Path, default=Path(".cache/mx_catalogue.csv"))
     args = p.parse_args(argv)
@@ -105,8 +147,19 @@ def main(argv=None):
         writer = csv.DictWriter(out, fieldnames=("symbol", "sources", "classification", "eligible_for_automatic_radar"))
         writer.writeheader()
         writer.writerows(result["rows"])
+    if result["issuer_rows"]:
+        issuer_path = args.output.with_name("mx_bmv_issuer_mapping_review.csv")
+        with issuer_path.open("w", newline="", encoding="utf-8-sig") as out:
+            writer = csv.DictWriter(out, fieldnames=("clave_emisora", "razon_social",
+                "yahoo_candidate_symbols", "mapping_status", "mapping_verified"))
+            writer.writeheader()
+            writer.writerows(result["issuer_rows"])
+        print(f"BMV issuers={result['official_issuer_count']} | "
+              f"prefix candidates={result['issuer_with_candidates']} | "
+              f"unmatched={result['official_issuer_count']-result['issuer_with_candidates']}")
+        print(f"BMV mapping review: {issuer_path}")
     diagnostic = args.output.with_suffix(".diagnostics.json")
-    diagnostic.write_text(json.dumps({k: v for k, v in result.items() if k != "rows"},
+    diagnostic.write_text(json.dumps({k: v for k, v in result.items() if k not in ("rows", "issuer_rows")},
                                      ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"MX catalogue={result['catalogue_size']} | Yahoo={result['yahoo_discovered']} | "
           f"Official rejected={result['official_rejected_count']}")
