@@ -72,7 +72,7 @@ def render_html(report):
         '<!doctype html><html lang="es"><head><meta charset="utf-8"></head>',
         '<body style="margin:0;background:#f0f3f8;font-family:Arial,Helvetica,sans-serif;color:#182333;">',
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">',
-        '<table role="presentation" width="680" cellpadding="0" cellspacing="0" style="width:100%;max-width:680px;background:#fff;">',
+        '<table role="presentation" width="960" cellpadding="0" cellspacing="0" style="width:100%;max-width:960px;background:#fff;">',
         '<tr><td style="padding:24px;background:#1b2c4f;color:#fff;">'
         '<div style="font-size:12px;letter-spacing:2px;color:#c6d8f0;">TRADEPILOT</div>'
         '<h1 style="font-size:25px;margin:9px 0;color:#fff;">Radar diario de oportunidades</h1>'
