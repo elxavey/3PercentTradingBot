@@ -19,6 +19,7 @@ from tradepilot.technical_setup import derive_levels
 from tradepilot.holding_sensitivity_cli import exclude_trailing_empty_prices
 from tradepilot.breakout_session_quality import assess_daily_sessions
 from tradepilot.breakout_trade_plan import build_trade_plan
+from tradepilot.rebound_engine import clean_placeholders
 
 
 def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
@@ -35,12 +36,13 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
         dates = pd.to_datetime(data.index, utc=True).date
         data = data.loc[dates < now.date()]
     market = "MX" if symbol.endswith(".MX") else "US"
+    data, removed_placeholders = clean_placeholders(data)
     data, excluded_terminal_bars = exclude_trailing_empty_prices(data, as_of_utc=now, market=market)
     if len(data) < 21:
         return {"symbol": symbol, "state": "REJECT", "reason": "INSUFFICIENT_COMPLETED_BARS"}
     quality = assess_daily_sessions(data, market=market, as_of_utc=now)
     if quality["state"] == "REJECT":
-        return {"symbol": symbol, "state": "REJECT", "reason": quality["reason"], "session_quality": quality}
+        return {"symbol": symbol, "state": "REJECT", "reason": quality["reason"], "session_quality": quality, "removed_empty_price_placeholders": removed_placeholders}
     result = classify_opportunity(data, near_pct=near_pct)
     if result["state"] == "INSUFFICIENT_DATA":
         return {"symbol": symbol, "state": "REJECT", "reason": result["reason"]}
@@ -52,7 +54,7 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
     avg_turnover = float(turnover.mean())
     if not isfinite(avg_turnover) or avg_turnover < min_turnover:
         return {"symbol": symbol, "state": "REJECT", "reason": "LOW_OR_INVALID_TURNOVER",
-                "avg_turnover_local_currency": avg_turnover if isfinite(avg_turnover) else None}
+                "avg_turnover_local_currency": avg_turnover if isfinite(avg_turnover) else None, "removed_empty_price_placeholders": removed_placeholders}
     volume = float(data["Volume"].iloc[-1])
     baseline = float(pd.to_numeric(data["Volume"].iloc[-21:-1]).mean())
     relative_volume = volume / baseline if baseline > 0 else 0.0
@@ -82,6 +84,7 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
             "sma20": round(sma20, 4), "sma50": round(sma50, 4) if sma50 is not None else None,
             "confirmation_checks": checks, "quality_score": score,
             "excluded_terminal_bars": excluded_terminal_bars,
+            "removed_empty_price_placeholders": removed_placeholders,
             "session": result["session"], "reference_close": result["close"],
             "resistance": resistance, "breakout_trigger": round(trigger, 4),
             "distance_to_trigger_pct": round(100 * (trigger / result["close"] - 1), 3),
