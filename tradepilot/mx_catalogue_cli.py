@@ -17,7 +17,7 @@ import pandas as pd
 from config import MEXICO_TICKERS, BREAKOUT_TEST_SYMBOLS
 from universe_discovery import _discover_region
 
-TICKER = re.compile(r"^[A-Z0-9&+._-]+\\.MX$")
+TICKER = re.compile(r"^[A-Z0-9&+._-]+\.MX$")
 EXCLUDE_MARKERS = ("ETF", "FIBRA", "FIBR", "TRAC", "ISHRS", "FONDO", "CKD", "CERPI")
 SYMBOL_COLUMNS = ("yahoo_symbol", "ticker_yahoo", "ticker", "symbol", "simbolo")
 TYPE_COLUMNS = ("tipo_valor", "tipo de valor", "tipo_instrumento", "instrument_type", "tipo")
