@@ -30,11 +30,18 @@ def assess_daily_sessions(history, *, market: str, as_of_utc: datetime, max_lag_
     expected = {s.date() for s in cal.sessions_in_range(start, last)}
     actual = {s.date() for s in history.index}
     missing = sorted(expected - actual)
-    if missing:
-        return {"state": "REJECT", "reason": "MISSING_EXCHANGE_SESSIONS",
+    # Breakout signals depend on the most recent 50 completed sessions.
+    # Older gaps remain disclosed, but cannot invalidate a current signal.
+    recent_start = pd.Timestamp(history.index[-50]).date() if len(history) >= 50 else start
+    recent_missing = [day for day in missing if day >= recent_start]
+    if recent_missing:
+        return {"state": "REJECT", "reason": "MISSING_RECENT_EXCHANGE_SESSIONS",
                 "last_bar": last.isoformat(), "expected_last_session": dates[-1].isoformat(),
-                "missing_sessions": [x.isoformat() for x in missing[:20]],
-                "missing_sessions_count": len(missing)}
+                "missing_sessions": [x.isoformat() for x in recent_missing[:20]],
+                "missing_sessions_count": len(recent_missing),
+                "historical_missing_sessions": [x.isoformat() for x in missing[:20]]}
     return {"state": "CURRENT" if lag <= max_lag_sessions else "STALE",
+            "historical_missing_sessions": [x.isoformat() for x in missing[:20]],
+            "historical_missing_sessions_count": len(missing),
             "last_bar": last.isoformat(), "expected_last_session": dates[-1].isoformat(),
             "lag_sessions": lag}
