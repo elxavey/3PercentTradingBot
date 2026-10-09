@@ -1,0 +1,53 @@
+"""Offline tests for research-only breakout shortlist."""
+import unittest
+from datetime import datetime, timezone
+import pandas as pd
+from config import BREAKOUT_TEST_SYMBOLS, UNIVERSES
+from tradepilot.breakout_shortlist_cli import analyze_symbol, shortlist
+
+
+def bars(last_close=98):
+    dates = pd.bdate_range("2026-07-01", periods=30)
+    close = [95.0] * 29 + [last_close]
+    high = [100.0] * 29 + [max(100.0, last_close)]
+    return pd.DataFrame({"Open": [95.0] * 30, "High": high,
+                         "Low": [90.0] * 30, "Close": close,
+                         "Volume": [200_000] * 30}, index=dates)
+
+
+class BreakoutShortlistTests(unittest.TestCase):
+    def setUp(self):
+        self.now = datetime(2026, 10, 8, tzinfo=timezone.utc)
+
+    def test_universe_excludes_crypto_and_futures(self):
+        self.assertEqual(UNIVERSES["Breakout test - user equities"], BREAKOUT_TEST_SYMBOLS)
+        self.assertEqual(len(BREAKOUT_TEST_SYMBOLS), len(set(BREAKOUT_TEST_SYMBOLS)))
+        for name in ("BTCUSD", "SHIBUSDT", "SI1!", "NATGAS", "NATURALG"):
+            self.assertNotIn(name, BREAKOUT_TEST_SYMBOLS)
+
+    def test_approaching_has_trigger_and_no_action(self):
+        r = analyze_symbol("TEST", bars(), as_of_utc=self.now)
+        self.assertEqual(r["state"], "APPROACHING")
+        self.assertAlmostEqual(r["breakout_trigger"], 100.1)
+        self.assertFalse(r["actionable"])
+
+    def test_no_forced_top_ten(self):
+        report = shortlist(["TEST", "FAR"], fetcher=lambda s, period: bars(98 if s == "TEST" else 91),
+                           as_of_utc=self.now)
+        self.assertEqual([r["symbol"] for r in report["top"]], ["TEST"])
+        self.assertFalse(report["actionable"])
+
+    def test_current_utc_date_excluded(self):
+        data = bars()
+        data.loc[pd.Timestamp("2026-10-08")] = [95, 200, 90, 199, 200000]
+        r = analyze_symbol("TEST", data, as_of_utc=self.now)
+        self.assertEqual(r["state"], "APPROACHING")
+
+    def test_low_liquidity_rejected(self):
+        r = analyze_symbol("TEST", bars(), min_turnover=100_000_000,
+                           as_of_utc=self.now)
+        self.assertEqual(r["reason"], "LOW_OR_INVALID_TURNOVER")
+
+
+if __name__ == "__main__":
+    unittest.main()
