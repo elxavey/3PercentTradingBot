@@ -8,6 +8,8 @@ import sys
 import time
 from pathlib import Path
 
+import pandas as pd
+
 from data_fetcher import get_price_history
 from tradepilot.backtest_compare_cli import normalize_symbols
 from tradepilot.backtest_validation import validated_backtest
@@ -17,6 +19,28 @@ from tradepilot.risk_optimization_cli import latest_scan_symbols, risk_budget
 
 STOPS = (1.8, 2.5, 3.0, 4.0)
 HOLDING_SESSIONS = (5, 7, 10)
+
+def exclude_trailing_empty_prices(history, *, as_of_utc, market):
+    """Exclude only a terminal OHLC-empty bar for the last completed session."""
+    if not isinstance(history, pd.DataFrame) or history.empty:
+        return history, []
+    cols = ["Open", "High", "Low", "Close"]
+    if any(c not in history for c in cols):
+        return history, []
+    if (not isinstance(history.index, pd.DatetimeIndex)
+            or not history.index.is_unique or not history.index.is_monotonic_increasing):
+        return history, []
+    if not history.iloc[-1][cols].isna().all():
+        return history, []
+    import exchange_calendars as xcals
+    cal = xcals.get_calendar("XMEX" if market == "MX" else "XNYS")
+    now = pd.Timestamp(as_of_utc)
+    sessions = cal.sessions_in_range((now - pd.Timedelta(days=30)).date(), now.date())
+    completed = [day for day in sessions if cal.session_close(day) <= now]
+    if not completed or history.index[-1].date() != completed[-1].date():
+        return history, []
+    return history.iloc[:-1].copy(), [history.index[-1].date().isoformat()]
+
 
 
 def evaluate_matrix(symbols, *, capital=10000.0, risk_pct=1.0,
@@ -44,6 +68,9 @@ def evaluate_matrix(symbols, *, capital=10000.0, risk_pct=1.0,
             progress(f"[{idx}/{len(names)}] {symbol}: fetching history...")
         try:
             history = fetch(symbol, period="2y")
+            history, excluded_terminal_bars = exclude_trailing_empty_prices(history, as_of_utc=now, market=market)
+            if excluded_terminal_bars and progress:
+                progress(f"[{idx}/{len(names)}] {symbol}: excluded terminal empty OHLC {excluded_terminal_bars[0]}")
         except Exception as exc:
             rows.append({"symbol": symbol, "market": market, "status": "ERROR",
                          "error": str(exc)[:160], "scenarios": []})
@@ -79,7 +106,7 @@ def evaluate_matrix(symbols, *, capital=10000.0, risk_pct=1.0,
             if progress:
                 progress(f"[{idx}/{len(names)}] {symbol}: stop {stop}% completed "
                          f"({time.monotonic()-t0:.1f}s)")
-        rows.append({"symbol": symbol, "market": market, "scenarios": scenarios})
+        rows.append({"symbol": symbol, "market": market, "excluded_terminal_bars": excluded_terminal_bars, "scenarios": scenarios})
         if progress:
             ok = sum(c["status"] == "RESEARCH_RESULT" for c in scenarios)
             progress(f"[{idx}/{len(names)}] {symbol}: {ok}/12 research results "
