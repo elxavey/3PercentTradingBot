@@ -5,6 +5,7 @@ import json
 import sqlite3
 import sys
 import time
+from datetime import datetime as local_datetime
 from datetime import datetime, timezone
 from math import isfinite
 from data_fetcher import get_price_history
@@ -53,6 +54,8 @@ def evaluate(symbols, *, fee, slippage, capital=10000.0, risk_pct=1.0,
     runner = runner or (validated_backtest if strict else exploratory_backtest)
     rows = []
     started = time.monotonic()
+    if progress is not None:
+        progress(f'Process started: {local_datetime.now().astimezone().isoformat(timespec="seconds")} | {len(names)} symbols | {len(STOPS)} stops')
     for index, symbol in enumerate(names, 1):
         symbol_started = time.monotonic()
         if progress is not None:
@@ -90,6 +93,8 @@ def evaluate(symbols, *, fee, slippage, capital=10000.0, risk_pct=1.0,
         if progress is not None:
             states = ", ".join(f"{case['stop_pct']}%={case['status']}" for case in scenarios)
             progress(f"[{index}/{len(names)}] {symbol}: {states} ({time.monotonic()-symbol_started:.1f}s; total {time.monotonic()-started:.1f}s)")
+    if progress is not None:
+        progress(f'Process finished: {local_datetime.now().astimezone().isoformat(timespec="seconds")} | elapsed {time.monotonic()-started:.1f}s')
     summary = []
     for i, stop in enumerate(STOPS):
         cases = [case for row in rows for case in row.get("scenarios", [])
