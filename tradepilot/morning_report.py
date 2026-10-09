@@ -20,6 +20,26 @@ def risk_label(row):
 
 
 
+def risk_diagnostics(row):
+    """Explain the unchanged minimum 1.0 reward/risk threshold."""
+    plan = row.get("trade_plan") or {}
+    entry = plan.get("entry_reference")
+    stop = plan.get("stop_reference")
+    ratio = plan.get("reward_risk_net")
+    if not all(isinstance(x, (int, float)) for x in (entry, stop, ratio)) or entry <= 0:
+        return {"reason": "PLAN_UNAVAILABLE", "minimum_reward_risk": MIN_REWARD_RISK}
+    return {"reason": "PASSED" if ratio >= MIN_REWARD_RISK else "STOP_TOO_WIDE_FOR_3_PERCENT_NET_TARGET",
+            "minimum_reward_risk": MIN_REWARD_RISK, "reward_risk_net": ratio,
+            "distance_entry_to_stop_pct": round(100 * (entry - stop) / entry, 3),
+            "reward_risk_shortfall": round(max(0, MIN_REWARD_RISK - ratio), 3)}
+
+
+def rebound_priority(row):
+    return (-{"REBOUND_CONFIRMED_RESEARCH": 3, "REBOUND_SETUP": 2,
+             "REBOUND_WATCH": 1}.get(row["state"], 0),
+            -row["quality_score"], row["symbol"])
+
+
 def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
                       primary_limit=10, watch_limit=3):
     if not 1 <= primary_limit <= 10 or not 0 <= watch_limit <= 3:
@@ -44,8 +64,10 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
                    "reason": type(exc).__name__, "detail": str(exc)[:160], "actionable": False}
         if row.get("state") in (PRIMARY, *WATCH):
             row["risk_assessment"] = risk_label(row)
+            row["risk_diagnostics"] = risk_diagnostics(row)
         if rebound.get("state") in ("REBOUND_CONFIRMED_RESEARCH", "REBOUND_SETUP", "REBOUND_WATCH"):
             rebound["risk_assessment"] = risk_label(rebound)
+            rebound["risk_diagnostics"] = risk_diagnostics(rebound)
         rows.append(row)
         rebound_rows.append(rebound)
         timings.append(perf_counter() - t)
@@ -62,7 +84,7 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
         rebound_local = [r for r in rebound_rows if r["symbol"].endswith(".MX") == (market == "MX")]
         rebound_current = [r for r in rebound_local if (r.get("session_quality") or {}).get("state") == "CURRENT"]
         rebound_primary = sorted((r for r in rebound_current if r["state"] == "REBOUND_CONFIRMED_RESEARCH" and r.get("risk_assessment") == "RISK_ACCEPTABLE_FOR_RESEARCH"), key=lambda r: (-r["quality_score"], r["symbol"]))[:primary_limit]
-        rebound_watch = sorted((r for r in rebound_current if r["state"] in ("REBOUND_WATCH", "REBOUND_SETUP") or (r["state"] == "REBOUND_CONFIRMED_RESEARCH" and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH")), key=lambda r: (-r["quality_score"], r["symbol"]))[:watch_limit]
+        rebound_watch = sorted((r for r in rebound_current if r["state"] in ("REBOUND_WATCH", "REBOUND_SETUP") or (r["state"] == "REBOUND_CONFIRMED_RESEARCH" and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH")), key=rebound_priority)[:watch_limit]
         markets[market] = {"rebounds": {"primary": rebound_primary, "watch": rebound_watch, "current": len(rebound_current)}, "reviewed": len(local), "current": len(valid),
                            "primary": primary, "watch": watch,
                            "risk_filtered": sum(r.get("risk_assessment") == "UNFAVORABLE_RISK_REWARD" for r in valid),
