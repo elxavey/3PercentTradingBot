@@ -54,7 +54,8 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
                        key=lambda r: (-r["quality_score"], r["symbol"]))[:watch_limit]
         markets[market] = {"reviewed": len(local), "current": len(valid),
                            "primary": primary, "watch": watch,
-                           "risk_filtered": sum(r["state"] == PRIMARY and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH" for r in valid),
+                           "risk_filtered": sum(r.get("risk_assessment") == "UNFAVORABLE_RISK_REWARD" for r in valid),
+                           "primary_excluded_by_risk": sum(r["state"] == PRIMARY and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH" for r in valid),
                            "rejected_or_error": sum(r["state"] in ("REJECT", "ERROR") for r in local)}
     elapsed = perf_counter() - started
     return {"state": "DAILY_RESEARCH_REPORT", "as_of_utc": now.isoformat(),
