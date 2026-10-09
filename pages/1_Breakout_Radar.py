@@ -6,11 +6,13 @@ import pandas as pd
 import streamlit as st
 from config import BREAKOUT_TEST_SYMBOLS, UNIVERSES
 from tradepilot.breakout_shortlist_cli import shortlist
+from tradepilot.morning_report import run_market_report
 
 st.set_page_config(page_title="TradePilot | Breakout Radar", page_icon="📡", layout="wide")
 st.title("📡 Breakout Opportunity Radar")
 st.caption("Research only · completed daily candles · no live quotes or orders. Score is not a win probability.")
 output = Path(__file__).resolve().parents[1] / "breakout_shortlist.json"
+morning_output = Path(__file__).resolve().parents[1] / "morning_radar_report.json"
 
 with st.sidebar:
     st.subheader("Breakout universe")
@@ -19,6 +21,7 @@ with st.sidebar:
     selected = st.selectbox("Universe", list(choices))
     st.caption("Only static, validated universes for now; dynamic 250/500/1000 needs rate-limit testing.")
     run = st.button("Run breakout research scan", type="primary", use_container_width=True)
+    st.caption("Morning report is generated separately by the CLI; no background job is running.")
 
 if run:
     with st.spinner("Scanning completed daily bars..."):
@@ -72,3 +75,41 @@ with st.expander(f"All reviewed symbols and exclusions ({len(all_rows)})"):
         "Historical gaps": (r.get("session_quality") or {}).get("historical_missing_sessions_count", 0),
     } for r in all_rows]), use_container_width=True, hide_index=True)
 st.warning("This is not an intraday opening scan. The latest complete daily candle can be yesterday's.")
+
+st.divider()
+st.subheader("🌅 Daily Radar — Mexico + United States")
+st.caption("Separate confirmed and watch tiers. Morning report uses last completed daily close, not a live quote.")
+if morning_output.exists():
+    try:
+        morning = json.loads(morning_output.read_text(encoding="utf-8"))
+        st.caption(f"Report generated: {morning.get('as_of_utc')} | analyzed {morning.get('completed')} / {morning.get('requested')} | elapsed {morning.get('elapsed_seconds')}s")
+        for market, label in (("MX", "🇲🇽 Mexico (MXN)"), ("US", "🇺🇸 United States (USD)")):
+            st.markdown(f"#### {label}")
+            section = morning.get("markets", {}).get(market, {})
+            st.caption(f"Reviewed {section.get('reviewed', 0)} | current daily data {section.get('current', 0)} | rejected/error {section.get('rejected_or_error', 0)}")
+            for tier, heading in (("primary", "Confirmed research (max 10)"), ("watch", "Watch candidates (max 3)")):
+                st.markdown(f"**{heading}**")
+                records = []
+                for r in section.get(tier, []):
+                    plan = r.get("trade_plan") or {}
+                    records.append({
+                        "Symbol": r.get("symbol"), "State": r.get("state"),
+                        "Last daily close": r.get("reference_close"),
+                        "Daily bar date": r.get("session"),
+                        "Breakout trigger": r.get("breakout_trigger"),
+                        "Illustrative entry": plan.get("entry_reference"),
+                        "Illustrative target": plan.get("target_exit_reference"),
+                        "Structural stop": plan.get("stop_reference"),
+                        "Net target % (assumed)": plan.get("estimated_net_target_pct"),
+                        "Reward/risk (assumed)": plan.get("reward_risk_net"),
+                        "Score (not probability)": r.get("quality_score"),
+                        "Relative volume": r.get("relative_volume"),
+                    })
+                if records:
+                    st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+                else:
+                    st.caption("No candidates in this category.")
+    except (OSError, ValueError, KeyError) as exc:
+        st.warning(f"Morning report unavailable: {exc}")
+else:
+    st.info("Generate the first daily report with: python -m tradepilot.morning_report_cli --universe test20")
