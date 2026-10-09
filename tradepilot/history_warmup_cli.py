@@ -11,10 +11,10 @@ from pathlib import Path
 import pandas as pd
 
 from data_fetcher import HISTORY_CACHE_DIR, _history_cache_path, get_price_history
-from universe_discovery import discover_dynamic_universe
+from universe_discovery import _discover_region
 
 LOG = Path(".cache/warmup_progress.json")
-INVENTORY = Path(".cache/mx_inventory.csv")
+INVENTORY = Path(".cache/warmup_inventory.csv")
 
 
 def cache_bars(symbol):
@@ -36,23 +36,35 @@ def save_progress(data):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Resumable Yahoo EOD history warmup, no trading")
-    parser.add_argument("--universe", type=int, choices=[250, 500, 1000], default=1000)
+    parser.add_argument("--mx-target", type=int, default=1000)
+    parser.add_argument("--us-target", type=int, default=1500)
     parser.add_argument("--max-minutes", type=int, default=110)
     parser.add_argument("--delay", type=float, default=0.4)
     parser.add_argument("--min-bars", type=int, default=350)
     args = parser.parse_args(argv)
+    if not 0 <= args.mx_target <= 3000 or not 0 <= args.us_target <= 3000 or args.mx_target + args.us_target == 0:
+        parser.error("Market targets must be 0..3000 with at least one positive target")
     if not 1 <= args.max_minutes <= 180 or not 0.2 <= args.delay <= 10:
         parser.error("max-minutes must be 1..180; delay must be 0.2..10")
     started = time.monotonic()
     deadline = started + args.max_minutes * 60
     print("Discovering MX/US symbols; Yahoo EOD only, no EODHD", flush=True)
-    universe = discover_dynamic_universe(args.universe)
-    symbols = universe["symbols"]
-    # Mexico first. Keep provider discovery metadata separate from coverage.
-    symbols.sort(key=lambda s: (not s.upper().endswith(".MX"), s))
+    mx_symbols = _discover_region("mx", args.mx_target) if args.mx_target else []
+    us_symbols = _discover_region("us", args.us_target) if args.us_target else []
+    # Keep market targets separate: never replace missing MX equities with US equities.
+    mx_symbols = list(dict.fromkeys(s for s in mx_symbols if s.upper().endswith(".MX")))
+    us_symbols = list(dict.fromkeys(s for s in us_symbols if not s.upper().endswith(".MX")))
+    symbols = mx_symbols + us_symbols
+    print(f"Requested MX={args.mx_target}, US={args.us_target}; "
+          f"discovered MX={len(mx_symbols)}, US={len(us_symbols)}. "
+          f"Missing MX={args.mx_target-len(mx_symbols)}, US={args.us_target-len(us_symbols)}", flush=True)
     progress = {"started_utc": datetime.now(timezone.utc).isoformat(),
-                "requested": args.universe, "discovered": len(symbols),
-                "mx": universe["mx"], "us": universe["us"],
+                "requested": args.mx_target + args.us_target, "discovered": len(symbols),
+                "requested_mx": args.mx_target, "requested_us": args.us_target,
+                "discovered_mx": len(mx_symbols), "discovered_us": len(us_symbols),
+                "missing_mx": args.mx_target - len(mx_symbols),
+                "missing_us": args.us_target - len(us_symbols),
+                "mx": len(mx_symbols), "us": len(us_symbols),
                 "done": 0, "cached": 0, "downloaded": 0, "failed": 0,
                 "results": {}}
     save_progress(progress)
