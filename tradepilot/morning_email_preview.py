@@ -53,7 +53,7 @@ def opportunity_card(row, strategy, currency):
     indicators = ("RSI14 " + fmt(row.get("rsi14")) + " · Volumen " + fmt(row.get("relative_volume")) + "x") if strategy == "rebound" else (
         "Volumen " + fmt(row.get("relative_volume")) + "x · Score " + fmt(row.get("quality_score"), 1) + "/100")
     return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            'style="border:2px solid ' + border + ';background:' + background + ';margin:0 0 12px;border-collapse:separate;">'
+            'style="border:2px solid ' + border + ';background:' + background + ';margin:0 0 12px;border-collapse:separate;">' +
             '<tr><td style="padding:14px 16px;">'
             ('<div style="font-size:12px;font-weight:bold;color:#17704b;margin-bottom:8px;">&#9733; SEÑAL DESTACADA · CONFIRMADA Y CON RIESGO ACEPTABLE</div>' if standout else '') +
             '<div style="font-size:18px;font-weight:bold;color:#182b4c;">' + escape(str(row.get("symbol", ""))) + '</div>'
