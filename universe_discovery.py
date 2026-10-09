@@ -4,6 +4,20 @@ import yfinance as yf
 from yfinance import EquityQuery
 
 
+def is_common_equity_quote(quote: dict) -> bool:
+    """Conservative instrument screen: reject known ETFs/funds/FIBRAs, do not infer missing type."""
+    symbol = str(quote.get("symbol") or "").upper()
+    kind = str(quote.get("quoteType") or "").upper()
+    name = str(quote.get("longName") or quote.get("shortName") or "").upper()
+    if not symbol or kind != "EQUITY":
+        return False
+    if any(token in name for token in ("ETF", "EXCHANGE TRADED FUND", "FIBRA", "FIDEICOMISO DE INVERSION EN BIENES RAICES")):
+        return False
+    if symbol.endswith(".MX") and (symbol.startswith(("NAFTRAC", "IVVPESO", "VMEX", "MEXTRAC", "FIBRA")) or symbol.startswith(("FUNO", "FMTY", "FIBRAMQ", "DANHOS", "TERRA13", "FPLUS", "FSHOP", "FIBRAPL", "FIBRAUP", "FIBRATC", "FIBRAHD", "FIBRAST", "FIBRANQ"))):
+        return False
+    return True
+
+
 def _discover_region(region: str, target: int) -> list[str]:
     """Discover liquid equities from Yahoo Finance with pagination."""
     symbols = []
@@ -30,8 +44,7 @@ def _discover_region(region: str, target: int) -> list[str]:
 
         for quote in quotes:
             symbol = quote.get("symbol")
-            quote_type = quote.get("quoteType")
-            if symbol and (not quote_type or quote_type == "EQUITY") and symbol not in symbols:
+                if is_common_equity_quote(quote) and symbol not in symbols:
                 symbols.append(symbol)
 
         if len(quotes) < page_size:
