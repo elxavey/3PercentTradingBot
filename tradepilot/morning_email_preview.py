@@ -36,12 +36,11 @@ def opportunity_card(row, strategy, currency):
         ("Cierre EOD", row.get("reference_close")), (level_name, row.get(level_key)),
         ("Entrada*", plan.get("entry_reference")), ("Objetivo*", plan.get("target_exit_reference")),
         ("Stop*", plan.get("stop_reference")), ("R/B", ratio)]
-    lines = []
-    for i in (0, 3):
-        lines.append('<tr>' + ''.join(
-            '<td style="width:33%;padding:7px 5px;vertical-align:top;"><div style="font-size:10px;color:#66788b;">' +
-            escape(k) + '</div><div style="font-size:16px;font-weight:bold;">' + fmt(v) + '</div></td>'
-            for k, v in pairs[i:i+3]) + '</tr>')
+    lines = ['<tr>' + ''.join(
+        '<td style="width:16.66%;padding:9px 7px 9px 0;vertical-align:top;white-space:nowrap;">'
+        '<div style="font-size:10px;color:#66788b;">' + escape(k) + '</div>'
+        '<div style="font-size:16px;font-weight:bold;">' + fmt(v) + '</div></td>'
+        for k, v in pairs) + '</tr>']
     why = ("El stop está a " + fmt(diag.get("distance_entry_to_stop_pct")) +
            "% de la entrada. R/B " + fmt(ratio) + " es inferior al mínimo de 1.00.") if not good and ratio is not None else (
            "Cumple el filtro R/B ≥ 1.00." if good else "Faltan datos para evaluar el riesgo.")
