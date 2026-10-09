@@ -16,6 +16,7 @@ from config import BREAKOUT_TEST_SYMBOLS
 from data_fetcher import get_price_history
 from tradepilot.opportunity_monitor import classify_opportunity
 from tradepilot.technical_setup import derive_levels
+from tradepilot.holding_sensitivity_cli import exclude_trailing_empty_prices
 
 
 def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
@@ -31,6 +32,8 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
     if isinstance(data.index, pd.DatetimeIndex):
         dates = pd.to_datetime(data.index, utc=True).date
         data = data.loc[dates < now.date()]
+    market = "MX" if symbol.endswith(".MX") else "US"
+    data, excluded_terminal_bars = exclude_trailing_empty_prices(data, as_of_utc=now, market=market)
     if len(data) < 21:
         return {"symbol": symbol, "state": "REJECT", "reason": "INSUFFICIENT_COMPLETED_BARS"}
     result = classify_opportunity(data, near_pct=near_pct)
@@ -48,6 +51,7 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
     resistance = result["resistance"]
     trigger = resistance * 1.001
     return {"symbol": symbol, "state": result["state"],
+            "excluded_terminal_bars": excluded_terminal_bars,
             "session": result["session"], "reference_close": result["close"],
             "resistance": resistance, "breakout_trigger": round(trigger, 4),
             "distance_to_trigger_pct": round(100 * (trigger / result["close"] - 1), 3),
