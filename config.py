@@ -36,8 +36,6 @@ UNIVERSES = {
     "Broad MX + USA - 62 symbols": TICKERS + BROAD_US_TICKERS,
 }
 
-UNIVERSES["Breakout test - user equities"] = BREAKOUT_TEST_SYMBOLS
-
 
 # Phase 5 / Breakout research: user-selected equities only; no crypto, gas
 # futures or unverified Yahoo ticker guesses. Duplicates removed in order.
@@ -51,6 +49,8 @@ BREAKOUT_TEST_SYMBOLS = [
 # PE_OLE, SRF, VASCON, AXTEL, SITES1, MFRISC.
 # SI1!, NATGAS, NATURALG are excluded as non-equity instruments;
 # SHIBUSDT and BTCUSD are excluded cryptocurrencies.
+
+UNIVERSES["Breakout test - user equities"] = BREAKOUT_TEST_SYMBOLS
 
 DYNAMIC_UNIVERSES = {
     "Dynamic MX + USA - 250 symbols": 250,
