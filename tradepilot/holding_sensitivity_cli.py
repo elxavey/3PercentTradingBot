@@ -138,7 +138,7 @@ def main(argv=None):
     print(json.dumps({"state": report["state"], "summaries": report["summaries"],
                       "rejected_symbols": [r["symbol"] for r in report["results"]
                                            if any(c["status"] != "RESEARCH_RESULT"
-                                                  for c in r["scenarios"]) or not r["scenarios"]},
+                                                  for c in r["scenarios"]) or not r["scenarios"]]},
                      indent=2, allow_nan=False))
     return 0
 
