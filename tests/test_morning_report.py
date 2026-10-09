@@ -51,8 +51,9 @@ class MarketReportTests(unittest.TestCase):
         self.assertEqual(risk_label({}), "RISK_UNAVAILABLE")
 
     def test_html_safe_and_rounded(self):
-        report = {"as_of_utc": "2026-10-09", "markets": {"MX": {"reviewed": 1, "current": 1, "primary": [], "watch": [{"symbol": "<X>", "state": "APPROACHING", "reference_close": 47.639999, "breakout_trigger": 48.1, "trade_plan": {"reward_risk_net": 0.28}}]}, "US": {}}}
+        report = {"as_of_utc": "2026-10-09", "markets": {"MX": {"reviewed": 1, "current": 1, "primary": [], "watch": [{"symbol": "<X>", "state": "APPROACHING", "reference_close": 47.639999, "breakout_trigger": 48.1, "trade_plan": {"plan_state": "ILLUSTRATIVE_UNTRIGGERED", "reward_risk_net": 0.28}}]}, "US": {}}}
         html = render_html(report)
+        self.assertNotIn(r"\\n", html)
         self.assertIn("&lt;X&gt;", html)
         self.assertIn("47.64", html)
         self.assertNotIn("47.639999", html)
