@@ -18,6 +18,7 @@ from tradepilot.opportunity_monitor import classify_opportunity
 from tradepilot.technical_setup import derive_levels
 from tradepilot.holding_sensitivity_cli import exclude_trailing_empty_prices
 from tradepilot.breakout_session_quality import assess_daily_sessions
+from tradepilot.breakout_trade_plan import build_trade_plan
 
 
 def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
@@ -74,7 +75,9 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
     proximity = max(0.0, 1 - abs((resistance * 1.001 / result["close"] - 1) * 100) / near_pct)
     score = round(35 * proximity + 25 * min(relative_volume / 1.5, 1) +
                   20 * int(trend) + 20 * int(breakout), 2)
-    return {"symbol": symbol, "state": state,
+    plan = build_trade_plan({"reference_close": result["close"], "breakout_trigger": trigger,
+                             "structural_stop_reference": levels["structural_stop"]})
+    return {"symbol": symbol, "state": state, "trade_plan": plan,
             "session_quality": quality, "relative_volume": round(relative_volume, 3),
             "sma20": round(sma20, 4), "sma50": round(sma50, 4) if sma50 is not None else None,
             "confirmation_checks": checks, "quality_score": score,
