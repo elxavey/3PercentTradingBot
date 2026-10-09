@@ -7,7 +7,9 @@ from tradepilot.breakout_shortlist_cli import analyze_symbol, shortlist
 
 
 def bars(last_close=98):
-    dates = pd.bdate_range(end="2026-10-08", periods=30)
+    import exchange_calendars as xcals
+    cal = xcals.get_calendar("XNYS")
+    dates = cal.sessions_in_range("2026-08-20", "2026-10-08")[-30:].tz_localize(None)
     close = [95.0] * 29 + [last_close]
     high = [100.0] * 29 + [max(100.0, last_close)]
     return pd.DataFrame({"Open": [95.0] * 30, "High": high,
