@@ -73,6 +73,30 @@ class BreakoutShortlistTests(unittest.TestCase):
         self.assertFalse(r["confirmation_checks"]["relative_volume_at_least_1_5"])
         self.assertFalse(r["actionable"])
 
+    def test_old_gap_disclosed_but_current_signal_allowed(self):
+        import exchange_calendars as xcals
+        cal = xcals.get_calendar("XNYS")
+        dates = cal.sessions_in_range("2026-04-01", "2026-10-08").tz_localize(None)
+        history = pd.DataFrame({"Open": 95.0, "High": 100.0, "Low": 90.0,
+                                "Close": 98.0, "Volume": 200000}, index=dates)
+        missing = dates[5]
+        history = history.drop(missing)
+        r = analyze_symbol("TEST", history, as_of_utc=self.now)
+        self.assertEqual(r["session_quality"]["state"], "CURRENT")
+        self.assertIn(missing.date().isoformat(),
+                      r["session_quality"]["historical_missing_sessions"])
+
+    def test_recent_gap_rejected(self):
+        import exchange_calendars as xcals
+        cal = xcals.get_calendar("XNYS")
+        dates = cal.sessions_in_range("2026-04-01", "2026-10-08").tz_localize(None)
+        history = pd.DataFrame({"Open": 95.0, "High": 100.0, "Low": 90.0,
+                                "Close": 98.0, "Volume": 200000}, index=dates)
+        history = history.drop(dates[-5])
+        r = analyze_symbol("TEST", history, as_of_utc=self.now)
+        self.assertEqual(r["state"], "REJECT")
+        self.assertEqual(r["reason"], "MISSING_RECENT_EXCHANGE_SESSIONS")
+
     def test_low_liquidity_rejected(self):
         r = analyze_symbol("TEST", bars(), min_turnover=100_000_000,
                            as_of_utc=self.now)
