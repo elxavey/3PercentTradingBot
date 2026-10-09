@@ -6,6 +6,7 @@ from pathlib import Path
 from config import BREAKOUT_TEST_SYMBOLS, UNIVERSES
 from tradepilot.morning_report import run_market_report
 from universe_discovery import discover_dynamic_universe
+from tradepilot.bmv_universe import load_bmv_research_symbols
 from time import perf_counter
 
 
@@ -14,6 +15,8 @@ def main(argv=None):
     p.add_argument("--universe", choices=("test20", "broad62", "dynamic250", "dynamic500", "dynamic1000"), default="test20")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--output", default="morning_radar_report.json")
+    p.add_argument("--include-bmv-research", action="store_true", help="Opt-in unverified BMV research candidates")
+    p.add_argument("--bmv-file", default=".cache/mx_bmv_candidate_validation.csv")
     args = p.parse_args(argv)
     if args.limit is not None and not 1 <= args.limit <= 1000:
         p.error("--limit must be 1..1000")
@@ -30,13 +33,26 @@ def main(argv=None):
             p.error("Yahoo discovery returned no symbols; refusing empty scan")
     else:
         symbols = BREAKOUT_TEST_SYMBOLS if args.universe == "test20" else UNIVERSES["Broad MX + USA - 62 symbols"]
+    bmv_overlay = None
+    if args.include_bmv_research:
+        try:
+            bmv_symbols, bmv_counts = load_bmv_research_symbols(args.bmv_file)
+        except (FileNotFoundError, ValueError) as exc:
+            p.error(str(exc))
+        base_count = len(symbols)
+        symbols = list(dict.fromkeys(list(symbols) + bmv_symbols))
+        bmv_overlay = {"candidates_selected": len(bmv_symbols),
+                       "new_symbols_added": len(symbols) - base_count,
+                       "counts": bmv_counts, "mapping_verified": False, "research_only": True}
+        print(f"BMV research overlay: {len(bmv_symbols)} candidates, {bmv_overlay['new_symbols_added']} new to scan (mapping unverified)", flush=True)
     if args.limit:
         symbols = symbols[:args.limit]
     report = run_market_report(symbols, progress=lambda i,n,s,state:
                                print(f"[{i}/{n}] {s}: {state}", flush=True))
     report["universe"] = args.universe
     report["discovery"] = discovery
-    report["coverage_pct"] = round(100 * report["completed"] / (int(args.universe.removeprefix("dynamic")) if discovery else len(symbols)), 2)
+    report["bmv_research_overlay"] = bmv_overlay
+    report["coverage_pct"] = round(100 * report["completed"] / len(symbols), 2) if symbols else 0
     report["total_wall_seconds_including_discovery"] = round(report["elapsed_seconds"] + (discovery["measured_wall_seconds"] if discovery else 0), 3)
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
