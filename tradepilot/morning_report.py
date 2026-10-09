@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from time import perf_counter
 from tradepilot.breakout_shortlist_cli import analyze_symbol
+from tradepilot.rebound_engine import analyze_rebound
 from data_fetcher import get_price_history
 
 PRIMARY = "CONFIRMED_RESEARCH"
@@ -27,20 +28,26 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
     fetch = fetcher or get_price_history
     requested = list(dict.fromkeys(symbols))
     rows = []
+    rebound_rows = []
     timings = []
     started = perf_counter()
     for i, symbol in enumerate(requested, 1):
         t = perf_counter()
         try:
             history = fetch(symbol, period="6mo")
+            rebound = analyze_rebound(symbol, history, as_of_utc=now)
             row = analyze_symbol(symbol, history, as_of_utc=now,
                                  min_turnover=5_000_000 if symbol.endswith(".MX") else 10_000_000)
         except Exception as exc:
+            rebound = {"symbol": symbol, "state": "ERROR", "reason": type(exc).__name__, "actionable": False}
             row = {"symbol": symbol, "state": "ERROR",
                    "reason": type(exc).__name__, "detail": str(exc)[:160], "actionable": False}
         if row.get("state") in (PRIMARY, *WATCH):
             row["risk_assessment"] = risk_label(row)
+        if rebound.get("state") in ("REBOUND_CONFIRMED_RESEARCH", "REBOUND_SETUP", "REBOUND_WATCH"):
+            rebound["risk_assessment"] = risk_label(rebound)
         rows.append(row)
+        rebound_rows.append(rebound)
         timings.append(perf_counter() - t)
         if progress:
             progress(i, len(requested), symbol, row["state"])
@@ -52,14 +59,18 @@ def run_market_report(symbols, *, fetcher=None, as_of_utc=None, progress=None,
                          key=lambda r: (-r["quality_score"], r["symbol"]))[:primary_limit]
         watch = sorted((r for r in valid if r["state"] in WATCH or (r["state"] == PRIMARY and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH")),
                        key=lambda r: (-r["quality_score"], r["symbol"]))[:watch_limit]
-        markets[market] = {"reviewed": len(local), "current": len(valid),
+        rebound_local = [r for r in rebound_rows if r["symbol"].endswith(".MX") == (market == "MX")]
+        rebound_current = [r for r in rebound_local if (r.get("session_quality") or {}).get("state") == "CURRENT"]
+        rebound_primary = sorted((r for r in rebound_current if r["state"] == "REBOUND_CONFIRMED_RESEARCH" and r.get("risk_assessment") == "RISK_ACCEPTABLE_FOR_RESEARCH"), key=lambda r: (-r["quality_score"], r["symbol"]))[:primary_limit]
+        rebound_watch = sorted((r for r in rebound_current if r["state"] in ("REBOUND_WATCH", "REBOUND_SETUP") or (r["state"] == "REBOUND_CONFIRMED_RESEARCH" and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH")), key=lambda r: (-r["quality_score"], r["symbol"]))[:watch_limit]
+        markets[market] = {"rebounds": {"primary": rebound_primary, "watch": rebound_watch, "current": len(rebound_current)}, "reviewed": len(local), "current": len(valid),
                            "primary": primary, "watch": watch,
                            "risk_filtered": sum(r.get("risk_assessment") == "UNFAVORABLE_RISK_REWARD" for r in valid),
                            "primary_excluded_by_risk": sum(r["state"] == PRIMARY and r.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH" for r in valid),
                            "rejected_or_error": sum(r["state"] in ("REJECT", "ERROR") for r in local)}
     elapsed = perf_counter() - started
     return {"state": "DAILY_RESEARCH_REPORT", "as_of_utc": now.isoformat(),
-            "markets": markets, "results": rows, "requested": len(requested),
+            "markets": markets, "results": rows, "rebound_results": rebound_rows, "requested": len(requested),
             "completed": len(rows), "elapsed_seconds": round(elapsed, 3),
             "fetch_and_analysis_seconds": round(sum(timings), 3),
             "mean_symbol_seconds": round(sum(timings) / len(timings), 3) if timings else None,
