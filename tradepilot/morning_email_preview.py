@@ -65,6 +65,21 @@ def render_html(report):
                 parts.append('<tr><td colspan="8" style="font-size:11px;color:#607287;padding:3px 6px 12px;">' +
                              escape(status + warning + " · Vela: " + str(row.get("session", "N/A"))) + '</td></tr>')
             parts.append('</table>')
+        rebound=data.get("rebounds",{})
+        parts.append('<h3 style="font-size:17px;">Posibles rebotes · soporte y recuperación</h3>')
+        for tier,title in (("primary","Rebotes principales · máximo 10"),("watch","Rebotes en observación · máximo 3")):
+            parts.append('<h4>'+title+'</h4>')
+            items=rebound.get(tier,[])
+            if not items:
+                parts.append('<p>Sin candidatos que cumplan las condiciones.</p>')
+            for row in items:
+                plan=row.get("trade_plan") or {}
+                parts.append('<p><b>'+escape(str(row.get("symbol","")))+'</b> · Cierre EOD: '+fmt(row.get("reference_close"))+
+                    ' · Soporte: '+fmt(row.get("support"))+' · RSI14: '+fmt(row.get("rsi14"))+
+                    ' · RVOL: '+fmt(row.get("relative_volume"))+' · Entrada*: '+fmt(plan.get("entry_reference"))+
+                    ' · Objetivo*: '+fmt(plan.get("target_exit_reference"))+' · Stop*: '+fmt(plan.get("stop_reference"))+
+                    ' · R/B: '+fmt(plan.get("reward_risk_net"))+' · '+escape(str(row.get("state","")))+
+                    ' · '+escape(str(row.get("risk_assessment","")))+'</p>')
     parts.extend(['<p style="font-size:11px;color:#66778b;margin-top:25px;">* Entrada, salida y stop son referencias hipotéticas; no cotizaciones actuales ni garantías de ejecución. Objetivo de 3% neto estimado con comisiones y deslizamiento supuestos. R/B = beneficio/riesgo neto estimado. Umbral R/B ≥ 1.0 provisional, sin validación histórica. El score no es probabilidad de éxito. La cobertura depende del universo analizado.</p>',
                   '<p style="font-size:11px;color:#66778b;">No se enviaron correos ni se realizaron operaciones.</p>',
                   '</td></tr></table></td></tr></table></body></html>'])
