@@ -4,6 +4,7 @@ import argparse
 from html import escape
 import json
 from pathlib import Path
+from tradepilot.morning_report import risk_label
 
 
 def fmt(value, digits=2):
@@ -52,7 +53,7 @@ def render_html(report):
                           plan.get("stop_reference"))
                 cells = ''.join('<td style="padding:8px 5px;text-align:right;border-bottom:1px solid #e6ecf2;">' + fmt(v) + '</td>' for v in values)
                 ratio = plan.get("reward_risk_net")
-                risk_color = "#a53a26" if row.get("risk_assessment") != "RISK_ACCEPTABLE_FOR_RESEARCH" else "#227451"
+                risk_color = "#a53a26" if risk_label(row) != "RISK_ACCEPTABLE_FOR_RESEARCH" else "#227451"
                 parts.append('<tr style="background:' + ('#ffffff' if index % 2 == 0 else '#f8fafc') + ';">' +
                              '<td style="font-weight:bold;border-bottom:1px solid #e6ecf2;">' + escape(str(row.get("symbol", ""))) + '</td>' +
                              cells + '<td style="text-align:right;color:' + risk_color + ';">' + fmt(ratio) +
@@ -60,14 +61,14 @@ def render_html(report):
                 status = {"APPROACHING": "Cerca de resistencia",
                           "BREAKOUT_PENDING_CONFIRMATION": "Ruptura sin confirmar",
                           "CONFIRMED_RESEARCH": "Confirmación histórica"}.get(row.get("state"), "Sin clasificar")
-                warning = " · Riesgo/beneficio desfavorable" if row.get("risk_assessment") == "UNFAVORABLE_RISK_REWARD" else ""
+                warning = " · Riesgo/beneficio desfavorable" if risk_label(row) == "UNFAVORABLE_RISK_REWARD" else ""
                 parts.append('<tr><td colspan="8" style="font-size:11px;color:#607287;padding:3px 6px 12px;">' +
                              escape(status + warning + " · Vela: " + str(row.get("session", "N/A"))) + '</td></tr>')
             parts.append('</table>')
     parts.extend(['<p style="font-size:11px;color:#66778b;margin-top:25px;">* Entrada, salida y stop son referencias hipotéticas; no cotizaciones actuales ni garantías de ejecución. Objetivo de 3% neto estimado con comisiones y deslizamiento supuestos. R/B = beneficio/riesgo neto estimado. Umbral R/B ≥ 1.0 provisional, sin validación histórica. El score no es probabilidad de éxito. La cobertura depende del universo analizado.</p>',
                   '<p style="font-size:11px;color:#66778b;">No se enviaron correos ni se realizaron operaciones.</p>',
                   '</td></tr></table></td></tr></table></body></html>'])
-    return "\\n".join(parts)
+    return "\n".join(parts)
 
 
 def main(argv=None):
