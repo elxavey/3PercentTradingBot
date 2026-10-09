@@ -17,6 +17,7 @@ from data_fetcher import get_price_history
 from tradepilot.opportunity_monitor import classify_opportunity
 from tradepilot.technical_setup import derive_levels
 from tradepilot.holding_sensitivity_cli import exclude_trailing_empty_prices
+from tradepilot.breakout_session_quality import assess_daily_sessions
 
 
 def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
@@ -36,6 +37,9 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
     data, excluded_terminal_bars = exclude_trailing_empty_prices(data, as_of_utc=now, market=market)
     if len(data) < 21:
         return {"symbol": symbol, "state": "REJECT", "reason": "INSUFFICIENT_COMPLETED_BARS"}
+    quality = assess_daily_sessions(data, market=market, as_of_utc=now)
+    if quality["state"] == "REJECT":
+        return {"symbol": symbol, "state": "REJECT", "reason": quality["reason"], "session_quality": quality}
     result = classify_opportunity(data, near_pct=near_pct)
     if result["state"] == "INSUFFICIENT_DATA":
         return {"symbol": symbol, "state": "REJECT", "reason": result["reason"]}
@@ -48,9 +52,32 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
     if not isfinite(avg_turnover) or avg_turnover < min_turnover:
         return {"symbol": symbol, "state": "REJECT", "reason": "LOW_OR_INVALID_TURNOVER",
                 "avg_turnover_local_currency": avg_turnover if isfinite(avg_turnover) else None}
+    volume = float(data["Volume"].iloc[-1])
+    baseline = float(pd.to_numeric(data["Volume"].iloc[-21:-1]).mean())
+    relative_volume = volume / baseline if baseline > 0 else 0.0
+    closes = pd.to_numeric(data["Close"], errors="coerce")
+    sma20 = float(closes.iloc[-20:].mean())
+    sma50 = float(closes.iloc[-50:].mean()) if len(closes) >= 50 else None
+    trend = bool(sma50 is not None and result["close"] > sma20 > sma50)
+    breakout = result["close"] > result["resistance"] * 1.001
+    volume_ok = relative_volume >= 1.5
+    confirmed = bool(breakout and volume_ok and trend and quality["state"] == "CURRENT")
+    state = ("CONFIRMED_RESEARCH" if confirmed else
+             "BREAKOUT_PENDING_CONFIRMATION" if result["state"] == "BREAKOUT_CANDIDATE" else
+             result["state"])
+    checks = {"close_above_buffered_resistance": bool(breakout),
+              "relative_volume_at_least_1_5": bool(volume_ok),
+              "positive_sma20_sma50_trend": bool(trend),
+              "current_completed_session": quality["state"] == "CURRENT"}
     resistance = result["resistance"]
     trigger = resistance * 1.001
-    return {"symbol": symbol, "state": result["state"],
+    proximity = max(0.0, 1 - abs((resistance * 1.001 / result["close"] - 1) * 100) / near_pct)
+    score = round(35 * proximity + 25 * min(relative_volume / 1.5, 1) +
+                  20 * int(trend) + 20 * int(breakout), 2)
+    return {"symbol": symbol, "state": state,
+            "session_quality": quality, "relative_volume": round(relative_volume, 3),
+            "sma20": round(sma20, 4), "sma50": round(sma50, 4) if sma50 is not None else None,
+            "confirmation_checks": checks, "quality_score": score,
             "excluded_terminal_bars": excluded_terminal_bars,
             "session": result["session"], "reference_close": result["close"],
             "resistance": resistance, "breakout_trigger": round(trigger, 4),
@@ -75,13 +102,12 @@ def shortlist(symbols, *, fetcher=get_price_history, near_pct=5.0,
         except Exception as exc:
             rows.append({"symbol": symbol, "state": "ERROR",
                          "reason": type(exc).__name__, "detail": str(exc)[:160]})
-    candidates = [r for r in rows if r["state"] in ("APPROACHING", "BREAKOUT_CANDIDATE")]
-    candidates.sort(key=lambda r: (r["state"] != "APPROACHING",
-                                   abs(r["distance_to_trigger_pct"]), r["symbol"]))
+    candidates = [r for r in rows if r["state"] in ("APPROACHING", "BREAKOUT_PENDING_CONFIRMATION", "CONFIRMED_RESEARCH") and r["session_quality"]["state"] == "CURRENT"]
+    candidates.sort(key=lambda r: (-r["quality_score"], r["symbol"]))
     return {"state": "BREAKOUT_SHORTLIST_RESEARCH", "as_of_utc": (as_of_utc or datetime.now(timezone.utc)).isoformat(),
             "top": candidates[:10], "results": rows,
             "research_only": True, "actionable": False,
-            "limitations": ["NO_VERIFIED_LIVE_QUOTES", "NO_VOLUME_CONFIRMATION",
+            "limitations": ["NO_VERIFIED_LIVE_QUOTES", "HEURISTIC_RANK_NOT_PROBABILITY",
                             "NO_OUT_OF_SAMPLE_EDGE", "NOT_GBM_ACTIONABLE",
                             "CURRENT_UTC_DATE_EXCLUDED_CONSERVATIVELY"]}
 
