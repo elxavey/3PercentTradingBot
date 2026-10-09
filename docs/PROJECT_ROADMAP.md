@@ -1,35 +1,40 @@
 # 3% Trading Bot — Objectives, Architecture & Development Plan
-Status: APPROVED PROJECT SCOPE (design only) | Baseline code: v0.4.0 | Updated: 2026-10-07
+Status: ACTIVE ROADMAP | Historical baseline: v0.4.0; research phases 1–4.9 subsequently developed | Updated: 2026-10-08
 
 ## 1. Mission
-Build a personal Windows-based, automated **short-swing (1–5 trading sessions)** opportunity system covering **Mexico and USA**, with two independent paths using the same validated trade-setup and risk rules:
+Build a personal Windows-based, automated **short-swing (1–5 trading sessions)** opportunity system covering **Mexico and USA**, with three independent opportunity-detection strategies and two execution/research paths sharing validated setup and risk rules:
+Strategies: **Breakout** (approaching resistance/confirmation), **Historical Support & Rebound** (repeated support/confirmation), and **Bullish Pullback** (correction within established uptrend). The application must forecast candidate entry, technical target, probability of reaching a specified net target before stop, and sessions-to-target when evidence is sufficient. It must distinguish WATCHING from CONFIRMED and abstain when evidence is insufficient.
+
+Execution paths:
 1. **Automatic paper trading**: simulate orders, fills, exits, portfolio and costs; never send live orders.
 2. **GBM Manual Trading Assistant**: suggest *potential* GBM-compatible trades with entry, order type, target, stop, quantity, net cost/FX estimates, expiry, rationale and warnings. The user places any real orders manually in GBM; no GBM credentials or broker order integration in v1.
 
 The ~3% **net** per successful trade is a research target, **not a guaranteed return**, daily quota, or automatic buy instruction. Test an initial +3.6% gross target only as a hypothesis; costs and exchange rates may change the required target.
 
 ## 2. Fixed product decisions
-- Holding period: 1–5 **market sessions**, with explicit time-exit policy to be tested.
+- Primary holding target: 1–5 **market sessions**; also research 7, 10 and 15-session horizons when supported by evidence, with explicit time exits. These are test horizons, not predicted durations.
 - Markets: MX and US, distinct calendars, sessions, currencies, liquidity and instrument mappings.
 - Autonomy: automated **paper** trading; manual-only GBM execution.
 - Host: user's Windows PC; Python, Streamlit dashboard, background worker, SQLite, GitHub development branch.
 - Personal/internal use; pragmatic modular monolith, not microservices.
 - Keep master stable; small commits to development, user tests on Windows before merge.
 
-## 3. Existing baseline (v0.4.0)
+## 3. Historical baseline (v0.4.0) and subsequent research progress
 - Dynamic Yahoo Finance universe (250/500/1,000 symbols), pre-screen, Quality Gate, Opportunity Score, historical/fundamental file caches, timing telemetry, CSV exports.
 - Latest observed 1,000-symbol run: discovery 1,000 (62 MX, 938 US); pre-screen 949; Quality Gate 835; 858.8 s total. These are observed benchmark figures, not guaranteed throughput.
 - Opportunity Score is **a ranking heuristic, not a calibrated probability or purchase signal**.
-- No reliable intraday feed, scheduler, operational DB, trade setup, validated backtest, portfolio risk, paper fills, GBM compatibility or live broker integration yet.
+- **Progress since this historical baseline:** phases 1–3 added watchlist, scanner and research setup capabilities; phases 4.1–4.9 added historical replay, simulator, data validation, exploratory recovery, cross-symbol comparisons, risk/holding sensitivity and entry diagnostics. These are research components, not a demonstrated profitable strategy or live trading system.
+- **Phase 4 findings:** the tested breakout family did not show positive pooled mean net trade returns across the 12 stop/holding scenarios (62-symbol research run). This does not test or invalidate the new support/rebound and pullback families.
+- Broker compatibility, reliable intraday execution, automatic paper trading and validated forecasts remain future work.
 
 ## 4. Target architecture (single Python project)
 1. **Market Data / Quality** — daily + intraday OHLCV, provider abstraction, cache with freshness and timestamps, retries/rate limits, FX, trading calendars, split/dividend adjustments, stale-data fail-closed.
-2. **Market Scanner** — discovery -> pre-screen -> Quality Gate -> Opportunity Score. Preserve and refactor current code.
+2. **Market Scanner** — discovery -> pre-screen -> Quality Gate -> strategy-specific candidate rankings (Breakout, Support/Rebound, Pullback). Preserve existing breakout research, but do not mistake heuristic score for calibrated probability.
 3. **Dynamic Watchlist** — shortlist (initial target 20–50), periodic refresh, promotion/removal, deduplication.
-4. **Trade Setup** — market structure (support/resistance), entry validation, order plan, target/stop, reward/risk, expiry, explanations.
+4. **Trade Setup / Opportunity Detectors** — three separate point-in-time detectors with common output contract: strategy, symbol, reference bar/date, WATCHING/CONFIRMED/REJECT, candidate entry zone/trigger, support/resistance, structural invalidation, liquidity, explanation and `actionable=false` by default.
 5. **Signal / State Engine** — DISCOVERED -> WATCHING -> READY/WAIT/REJECT -> OPEN -> CLOSED/EXPIRED; deterministic decisions, idempotent events.
 6. **Portfolio Risk** — per-trade risk, max open positions, correlated exposure, capital allocation, daily limits, market/FX constraints.
-7. **Backtesting / Research** — historical signal replay without look-ahead, realistic fill assumptions, intrabar ambiguity, spreads/slippage/fees, FX, survivorship caveats, out-of-sample evaluation and baselines.
+7. **Backtesting / Forecasting / Research** — historical signal replay without look-ahead, realistic fill assumptions, intrabar ambiguity, spreads/slippage/fees, FX, survivorship caveats, out-of-sample evaluation and baselines. Forecast target-first probability versus stop, net outcome, favorable/adverse excursion and sessions-to-target at 3/5/7/10/15-session horizons; display sample size, uncertainty and insufficient-evidence state.
 8. **Paper Trading** — virtual cash and orders, simulated fills, stop/target/time exits, recovery, performance and ledger.
 9. **GBM Trade Recommendations** — rank *validated* setups, verify tradability and instrument identity (MX listing/SIC/US access), show GBM-relevant limit/other supported order type, entry range, target, stop, quantity, estimated costs, FX, recommendation expiry and status. **Never claim GBM support without verified mapping and order capability**.
 10. **My GBM Portfolio** — manually entered/confirmed real executions, actual fill price/quantity/fees, tracked separately from simulated positions; no assumptions that a recommendation was filled.
@@ -90,15 +95,23 @@ Each suggestion must contain:
 - Replay identical pure decision functions with point-in-time data, simulated fills, fees/FX and out-of-sample tests.
 - Gate: reproducible reports, bias checks, baseline comparisons; no claims of edge without evidence.
 
-**Phase 5 — GBM Recommendations + manual portfolio**
-- Verified instrument mapping, actionable recommendation card, alerts, expiry, manual entry journal, separate real/manual ledger.
+**Phase 5 — Opportunity Detection & Forecasting (NEXT DEVELOPMENT PRIORITY)**
+- **5.1 Strategy contracts and scanners:** preserve existing breakout logic; add breakout proximity/trigger output, Historical Support & Rebound (prior 1–5-year repeated support, volatility-adjusted touch grouping, drawdown, confirmation) and Bullish Pullback (prior uptrend, retracement, candidate support, resumption confirmation). Avoid hard-coded answers for VOLARA.MX or MFRISCOA-1; use them only as visual case studies.
+- **5.2 Historical forecasts:** for each strategy, use point-in-time analog signals and the existing next-session-open simulator to estimate net +3% target-first probability, downside/stop-first risk, technical upside, and conditional median sessions to target across 3/5/7/10/15 completed market sessions. Separate trading target from broader technical resistance. Never infer an exact probability from a heuristic score.
+- **5.3 Validation:** compare each strategy independently using positive fees/slippage, conservative gap/ambiguous-bar assumptions, liquidity/spread gates, MX/US market separation, data-quality checks, chronological walk-forward/out-of-sample evaluation, sample-size thresholds and uncertainty. Report no demonstrated edge if results do not support one.
+- **5.4 Opportunity dashboard:** top **up to** 10 per strategy, not forced to fill slots; symbol, strategy, WATCHING vs CONFIRMED, reference timestamp, candidate entry, breakout/support/invalidating level, net target, forecast horizon, estimated probability when validated, risk and human-readable reason. Research-only, not broker-actionable.
+- **5.5 Follow-through:** track signal changes, expired opportunities, realized forward outcomes and forecast calibration over time without auto-execution.
+- **Gate:** deterministic point-in-time tests, correct signal classification on synthetic histories, reproducible reports, no leakage or fabricated prices, no forecasts when evidence is insufficient, and dashboard cards traceable to historical evidence. Implement in small commits on `development` only.
+
+**Phase 6 — GBM Recommendations + manual portfolio**
+- Verified instrument mapping, actionable recommendation card only after validation, alerts, expiry, manual entry journal, separate real/manual ledger.
 - Gate: cannot label unverified instruments/orders as GBM-actionable; manual execution never triggered by app.
 
-**Phase 6 — Automatic paper trading**
-- Simulated order lifecycle, portfolio constraints, 1–5-session exits, persistence and performance metrics.
+**Phase 7 — Automatic paper trading**
+- Simulated order lifecycle, portfolio constraints, session-based exits, persistence and performance metrics.
 - Gate: multi-session unattended simulation with correct restarts, fills and no duplicated trades.
 
-**Phase 7 — Operational dashboard / hardening**
+**Phase 8 — Operational dashboard / hardening**
 - Metrics, alerts, pause switch, daily reports, reliability and sustained paper-trading observation.
 - Gate: stable Windows operation, auditable decisions, known data gaps and realistic net performance.
 
@@ -114,5 +127,5 @@ Each suggestion must contain:
 - Broker compatibility, fees, FX and order-type support are **unknown until verified**.
 - Each phase ships as small commits to development; user tests Build/Run locally before merge to master.
 
-## 10. Next action
-Start **Phase 0**: inspect repository on `development`, produce a concrete Phase 1 technical specification (folder layout, SQLite DDL, job contracts, provider interfaces, tests), then implement in small commits **only after approval**.
+## 10. Next action — APPROVED PRIORITY
+Start **Phase 5.1 — Opportunity Detection Engine** on `development`: audit the existing scanner, historical replay, simulator and diagnostic interfaces; define one shared opportunity-signal schema; retain the current breakout path; add the support/rebound and bullish-pullback detectors with deterministic tests and point-in-time historical fixtures. Do **not** implement broker orders or merge to `master`. Once the user validates Phase 5.1 locally, continue to 5.2 forecasts and 5.3 out-of-sample validation before surfacing probabilities as reliable.
