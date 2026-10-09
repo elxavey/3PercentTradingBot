@@ -7,3 +7,4 @@ numpy
 python-dotenv
 exchange-calendars>=4.5,<5
 plotly>=5.20,<7
+openpyxl>=3.1,<4
