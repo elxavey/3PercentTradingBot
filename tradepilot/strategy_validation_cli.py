@@ -47,7 +47,7 @@ def simulate(future, trigger, stop, holding=10, fee=0.0025, slippage=0.001):
             "exit": round(px, 4), "bars_held": len(bars)-i}
 
 
-def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
+def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, progress=None):
     fetch = fetcher or get_price_history
     trades, audits, failures = [], [], []
     diagnostics = Counter()
@@ -55,7 +55,8 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
     state_counts = Counter()
     per_symbol = {}
     evaluated_bars = 0
-    for symbol in dict.fromkeys(symbols):
+    unique_symbols = list(dict.fromkeys(symbols))
+    for symbol_index, symbol in enumerate(unique_symbols, 1):
         try:
             data = fetch(symbol, period="2y")
             if fetcher is None and data is not None and len(data) < 300:
@@ -122,6 +123,9 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
                                    "strategy": name, "signal_date": str(date)[:10], **result})
         except Exception as exc:
             failures.append({"symbol": symbol, "reason": "PROCESS_ERROR", "detail": str(exc)[:120]})
+        finally:
+            if progress:
+                progress(symbol_index, len(unique_symbols), symbol, per_symbol.get(symbol, {}).get("evaluations", 0))
     summary = {}
     for market in ("MX", "US"):
         for strategy in ("BREAKOUT", "REBOUND"):
@@ -165,7 +169,8 @@ def main(argv=None):
     symbols = list(dict.fromkeys(symbols))[:a.max_symbols]
     if not symbols:
         p.error("Supply --symbols or --symbols-file")
-    result = run_backtest(symbols, lookback=a.lookback, holding=a.holding, stride=a.stride)
+    result = run_backtest(symbols, lookback=a.lookback, holding=a.holding, stride=a.stride,
+                          progress=lambda i, n, sym, windows: print(f"[{i}/{n}] {sym}: {windows} windows", flush=True))
     path = Path(a.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
