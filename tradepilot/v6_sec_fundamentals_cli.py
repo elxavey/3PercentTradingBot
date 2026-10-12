@@ -19,7 +19,7 @@ METRICS = {
     "assets": ("Assets",),
     "liabilities": ("Liabilities",),
     "cash": ("CashAndCashEquivalentsAtCarryingValue",),
-    "long_term_debt": ("LongTermDebtCurrent", "LongTermDebtNoncurrent", "LongTermDebt"),
+    "long_term_debt": ("LongTermDebtNoncurrent", "LongTermDebt"),
     "operating_cash_flow": ("NetCashProvidedByUsedInOperatingActivities",),
 }
 COLUMNS = ("case_id", "symbol", "signal_date", "metric", "value", "unit",
