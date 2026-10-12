@@ -118,9 +118,9 @@ def consolidate(cases_csv, evidence_json):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Validate historical financial evidence without look-ahead")
-    parser.add_argument("--cases", default=".cache/v6_pilot/pilot_cases.csv")
-    parser.add_argument("--evidence", default=".cache/v6_pilot/evidence_template.json")
-    parser.add_argument("--output", default=".cache/v6_pilot/evidence_review.csv")
+    parser.add_argument("--cases", default=".cache/v6_pilot_cases.csv")
+    parser.add_argument("--evidence", default=".cache/v6_evidence.json")
+    parser.add_argument("--output", default=".cache/v6_evidence_review.csv")
     args = parser.parse_args(argv)
     rows = consolidate(args.cases, args.evidence)
     target = Path(args.output)
