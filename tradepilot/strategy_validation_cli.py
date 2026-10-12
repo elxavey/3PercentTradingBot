@@ -9,6 +9,7 @@ import pandas as pd
 from data_fetcher import get_price_history
 from tradepilot.breakout_shortlist_cli import analyze_symbol
 from tradepilot.rebound_engine import analyze_rebound, clean_placeholders
+from tradepilot.risk_diagnostics import diagnose_risk, compare_cost_scenarios, aggregate_risk_diagnostics
 
 
 def simulate(future, trigger, stop, holding=10, fee=0.0025, slippage=0.001):
@@ -120,7 +121,14 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, 
                         continue
                     audits.append({"symbol": symbol, "strategy": name, "date": str(date)[:10],
                                    "trigger_below_close": trigger < close, "close": close, "trigger": trigger})
-                    if (plan.get("reward_risk_net") or 0) < 1:
+                    risk = diagnose_risk(plan)
+                    event["risk_diagnostic"] = risk
+                    event["cost_scenarios"] = compare_cost_scenarios(plan)
+                    if risk["status"] == "UNAVAILABLE":
+                        event["risk_status"] = "INVALID_RISK_DIAGNOSTIC"
+                        diagnostics[name + ":INVALID_RISK_DIAGNOSTIC"] += 1
+                        continue
+                    if risk["status"] == "FAIL":
                         event["risk_status"] = "RISK_BELOW_ONE"
                         diagnostics[name + ":RISK_BELOW_ONE"] += 1
                         continue
@@ -164,6 +172,7 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, 
                "holdout": split_metrics("holdout"),
                "warning": "NOT_TRUE_OUT_OF_SAMPLE: no train-only tuning; tickers selected using recent radar."}
     return {"state": "HISTORICAL_RESEARCH_ONLY", "summary": summary,
+            "risk_diagnostics_summary": aggregate_risk_diagnostics(signal_events),
             "chronological_split": holdout, "signal_events": signal_events,
             "diagnostics": {"signal_states": dict(state_counts), "rejection_reasons": dict(rejection_reasons),
                             "funnel": dict(diagnostics), "evaluated_bars": evaluated_bars,
@@ -206,7 +215,8 @@ def main(argv=None):
     path = Path(a.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
-    print(json.dumps({"summary": result["summary"], "chronological_split": result["chronological_split"],
+    print(json.dumps({"summary": result["summary"], "risk_diagnostics_summary": result["risk_diagnostics_summary"],
+                      "chronological_split": result["chronological_split"],
                       "diagnostics": result["diagnostics"], "entry_audit": result["entry_audit"],
                       "failures": len(result["failures"]), "output": str(path)}, indent=2))
     return 0
