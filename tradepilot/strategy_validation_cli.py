@@ -16,6 +16,8 @@ def simulate(future, trigger, stop, holding=10, fee=0.0025, slippage=0.001):
     if not 0 < stop < trigger or not 0 <= fee < 1 or not 0 <= slippage < 1:
         return {"outcome": "INVALID_PLAN"}
     bars = future.iloc[:holding]
+    if bars.empty:
+        return {"outcome": "NO_FUTURE_BARS"}
     entry = None
     for i, (_, bar) in enumerate(bars.iterrows()):
         op, hi = float(bar["Open"]), float(bar["High"])
@@ -48,6 +50,11 @@ def simulate(future, trigger, stop, holding=10, fee=0.0025, slippage=0.001):
 def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
     fetch = fetcher or get_price_history
     trades, audits, failures = [], [], []
+    diagnostics = Counter()
+    rejection_reasons = Counter()
+    state_counts = Counter()
+    per_symbol = {}
+    evaluated_bars = 0
     for symbol in dict.fromkeys(symbols):
         try:
             data = fetch(symbol, period="2y")
@@ -65,13 +72,18 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
             if n.isna().any().any() or (n[cols[:4]] <= 0).any().any() or (n["Volume"] < 0).any():
                 failures.append({"symbol": symbol, "reason": "INVALID_OHLCV"}); continue
             first = max(75, len(data)-lookback-holding)
+            per_symbol[symbol] = {"bars": len(data), "placeholders_removed": len(removed), "evaluations": 0}
             for end in range(first, len(data)-holding, stride):
                 prefix = data.iloc[:end]
                 date = prefix.index[-1]
                 asof = pd.Timestamp(date)
                 if asof.tzinfo is None:
                     asof = asof.tz_localize("UTC")
-                asof = asof.tz_convert("UTC") + pd.Timedelta(days=1)
+                # Use the next calendar day at UTC noon, before any following session closes.
+                # This prevents using future OHLC while preserving the signal bar as completed.
+                asof = asof.tz_convert("UTC").normalize() + pd.Timedelta(days=1, hours=12)
+                evaluated_bars += 1
+                per_symbol[symbol]["evaluations"] += 1
                 for name, fn, confirmed in (
                     ("BREAKOUT", analyze_symbol, "CONFIRMED_RESEARCH"),
                     ("REBOUND", analyze_rebound, "REBOUND_CONFIRMED_RESEARCH")):
@@ -81,20 +93,31 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
                             kwargs["min_turnover"] = 5_000_000 if symbol.endswith(".MX") else 10_000_000
                         row = fn(symbol, prefix, **kwargs)
                     except Exception as exc:
+                        diagnostics[name + ":SIGNAL_ERROR"] += 1
                         failures.append({"symbol": symbol, "reason": "SIGNAL_ERROR", "detail": str(exc)[:100]})
                         continue
-                    if row.get("state") != confirmed:
+                    state = row.get("state", "UNKNOWN")
+                    state_counts[name + ":" + state] += 1
+                    if state == "REJECT":
+                        rejection_reasons[name + ":" + str(row.get("reason", "UNKNOWN"))] += 1
+                    if state != confirmed:
+                        diagnostics[name + ":NOT_CONFIRMED"] += 1
                         continue
+                    diagnostics[name + ":CONFIRMED"] += 1
                     plan = row.get("trade_plan") or {}
                     trigger, stop = plan.get("entry_reference"), plan.get("stop_reference")
                     close = row.get("reference_close")
                     if not all(isinstance(x, (float, int)) for x in (trigger, stop, close)):
+                        diagnostics[name + ":INVALID_PLAN"] += 1
                         continue
                     audits.append({"symbol": symbol, "strategy": name, "date": str(date)[:10],
                                    "trigger_below_close": trigger < close, "close": close, "trigger": trigger})
                     if (plan.get("reward_risk_net") or 0) < 1:
+                        diagnostics[name + ":RISK_BELOW_ONE"] += 1
                         continue
+                    diagnostics[name + ":RISK_ACCEPTED"] += 1
                     result = simulate(data.iloc[end:end+holding], trigger, stop, holding=holding)
+                    diagnostics[name + ":" + result["outcome"]] += 1
                     trades.append({"symbol": symbol, "market": "MX" if symbol.endswith(".MX") else "US",
                                    "strategy": name, "signal_date": str(date)[:10], **result})
         except Exception as exc:
@@ -110,6 +133,9 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
                 "target_rate_executed_pct": round(100*sum(t["outcome"]=="TARGET" for t in executed)/len(executed),2) if executed else None,
                 "mean_net_pct": round(sum(t["net_pct"] for t in executed)/len(executed),3) if executed else None}
     return {"state": "HISTORICAL_RESEARCH_ONLY", "summary": summary,
+            "diagnostics": {"signal_states": dict(state_counts), "rejection_reasons": dict(rejection_reasons),
+                            "funnel": dict(diagnostics), "evaluated_bars": evaluated_bars,
+                            "by_symbol": per_symbol},
             "entry_audit": {"confirmed_signals": len(audits),
                             "trigger_below_close": sum(x["trigger_below_close"] for x in audits),
                             "examples": audits[:50]}, "trades": trades, "failures": failures,
@@ -120,19 +146,30 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="TradePilot offline historical strategy research")
-    p.add_argument("--symbols", nargs="+", required=True)
+    p.add_argument("--symbols", nargs="*", default=[])
+    p.add_argument("--symbols-file", help="Text file with one ticker per line; # comments supported")
+    p.add_argument("--max-symbols", type=int, default=250)
     p.add_argument("--lookback", type=int, default=180)
     p.add_argument("--holding", type=int, default=10)
     p.add_argument("--stride", type=int, default=10)
     p.add_argument("--output", default=".cache/strategy_validation.json")
     a = p.parse_args(argv)
+    if not 1 <= a.max_symbols <= 1000:
+        p.error("--max-symbols must be 1..1000")
     if not 30 <= a.lookback <= 500 or not 1 <= a.holding <= 30 or not 1 <= a.stride <= 60:
         p.error("Invalid lookback, holding or stride")
-    result = run_backtest(a.symbols, lookback=a.lookback, holding=a.holding, stride=a.stride)
+    symbols = list(a.symbols)
+    if a.symbols_file:
+        symbols.extend(line.strip().upper() for line in Path(a.symbols_file).read_text(encoding="utf-8-sig").splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+    symbols = list(dict.fromkeys(symbols))[:a.max_symbols]
+    if not symbols:
+        p.error("Supply --symbols or --symbols-file")
+    result = run_backtest(symbols, lookback=a.lookback, holding=a.holding, stride=a.stride)
     path = Path(a.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
-    print(json.dumps({"summary": result["summary"], "entry_audit": result["entry_audit"],
+    print(json.dumps({"summary": result["summary"], "diagnostics": result["diagnostics"], "entry_audit": result["entry_audit"],
                       "failures": len(result["failures"]), "output": str(path)}, indent=2))
     return 0
 
