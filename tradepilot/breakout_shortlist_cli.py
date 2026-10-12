@@ -78,7 +78,8 @@ def analyze_symbol(symbol, history, *, near_pct=5.0, min_turnover=0.0,
     score = round(35 * proximity + 25 * min(relative_volume / 1.5, 1) +
                   20 * int(trend) + 20 * int(breakout), 2)
     plan = build_trade_plan({"reference_close": result["close"], "breakout_trigger": trigger,
-                             "structural_stop_reference": levels["structural_stop"]})
+                             "structural_stop_reference": levels["structural_stop"]},
+                            forward_entry_floor_pct=0.1)
     return {"symbol": symbol, "state": state, "trade_plan": plan,
             "session_quality": quality, "relative_volume": round(relative_volume, 3),
             "sma20": round(sma20, 4), "sma50": round(sma50, 4) if sma50 is not None else None,
