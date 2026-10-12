@@ -14,6 +14,7 @@ import pandas as pd
 from data_fetcher import get_price_history
 from tradepilot.breakout_shortlist_cli import analyze_symbol
 from tradepilot.rebound_engine import analyze_rebound, clean_placeholders
+from tradepilot.historical_v5 import compare_exit_policies, aggregate_comparisons, suppress_overlapping_entries
 
 
 def follow_without_stop(future, trigger, *, fee=0.0025, slippage=0.001):
@@ -118,7 +119,8 @@ def research(symbols, *, lookback=180, stride=15, fetcher=None, progress=None):
                             result={"outcome":"INVALID_PLAN"}
                         else:
                             result=follow_without_stop(data.iloc[end:],trigger)
-                        records.append({"symbol":symbol,"market":"MX" if symbol.endswith(".MX") else "US",
+                        comparison = compare_exit_policies(data.iloc[end:], trigger, plan.get("stop_reference")) if isinstance(trigger,(float,int)) and trigger>0 else None
+                        records.append({"exit_comparison":comparison,"no_stop_exit_date":result.get("target_date"),"symbol":symbol,"market":"MX" if symbol.endswith(".MX") else "US",
                                         "strategy":strategy,"signal_date":str(signal_date)[:10],
                                         "original_risk_gate":plan.get("reward_risk_net"),
                                         **result})
@@ -141,7 +143,11 @@ def research(symbols, *, lookback=180, stride=15, fetcher=None, progress=None):
                 "entry_not_triggered":sum(r["outcome"]=="ENTRY_NOT_TRIGGERED" for r in group),
                 "target_hit_pct_of_triggered_entries":round(100*len(hits)/len(entries),2) if entries else None,
                 "median_sessions_to_target":float(pd.Series([r["sessions_to_target_including_entry"] for r in hits]).median()) if hits else None}
+    deduplicated = suppress_overlapping_entries(records)
     return {"state":"HISTORICAL_NO_STOP_RESEARCH_ONLY","summary":summary,
+            "v5_comparison":aggregate_comparisons(records),
+            "v5_nonoverlapping_comparison":aggregate_comparisons(deduplicated),
+            "v5_nonoverlapping_signals":len(deduplicated),
             "signals":records,"errors":errors,
             "limitations":["NO_STOP_LOSS_IS_NOT_A_RECOMMENDATION",
                            "RIGHT_CENSORED_RECENT_SIGNALS",
@@ -150,18 +156,19 @@ def research(symbols, *, lookback=180, stride=15, fetcher=None, progress=None):
                            "ENTRY_BAR_LOW_ORDER_UNKNOWN",
                            "EOD_ONLY_INTRADAY_SEQUENCE_UNKNOWN",
                            "NO_FIXED_HOLDING_LIMIT_BUT_ONLY_AVAILABLE_HISTORY",
-                           "NO_PROFITABILITY_CLAIM"]}
+                           "NO_PROFITABILITY_CLAIM","STOP_ON_ENTRY_BAR_NOT_MODELED_DUE_TO_OHLC_AMBIGUITY",
+                           "SAME_BAR_TARGET_STOP_COUNTS_AS_STOP","NONOVERLAP_DESCRIPTIVE_ONLY"]}
 
 
 def main(argv=None):
     p=argparse.ArgumentParser(description="Confirmed signals, unlimited observed sessions, no stop")
     p.add_argument("--symbols-file",required=True)
     p.add_argument("--max-symbols",type=int,default=100)
-    p.add_argument("--lookback",type=int,default=180)
+    p.add_argument("--lookback",type=int,default=1000)
     p.add_argument("--stride",type=int,default=15)
     p.add_argument("--output",default=".cache/no_stop_validation.json")
     a=p.parse_args(argv)
-    if not 1<=a.max_symbols<=1000 or not 90<=a.lookback<=1200 or not 1<=a.stride<=60:
+    if not 1<=a.max_symbols<=1000 or not 90<=a.lookback<=1250 or not 1<=a.stride<=60:
         p.error("Invalid arguments")
     symbols=list(dict.fromkeys(line.strip().upper() for line in Path(a.symbols_file).read_text(encoding="utf-8-sig").splitlines()
                             if line.strip() and not line.lstrip().startswith("#")))[:a.max_symbols]
@@ -170,7 +177,8 @@ def main(argv=None):
     out=Path(a.output);out.parent.mkdir(parents=True,exist_ok=True)
     out.write_text(json.dumps(result,indent=2,allow_nan=False),encoding="utf-8")
     print(json.dumps({"summary":result["summary"],"errors":len(result["errors"]),
-                      "output":str(out)},indent=2))
+                      "output":str(out),"v5_comparison":result["v5_comparison"],
+                      "v5_nonoverlapping_comparison":result["v5_nonoverlapping_comparison"]},indent=2))
     return 0
 
 if __name__=="__main__":
