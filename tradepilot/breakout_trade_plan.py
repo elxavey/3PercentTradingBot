@@ -8,7 +8,8 @@ from math import isfinite
 
 def build_trade_plan(row: dict, *, target_net_pct: float = 3.0,
                      fee_per_side: float = 0.0025,
-                     slippage_per_side: float = 0.001) -> dict:
+                     slippage_per_side: float = 0.001,
+                     forward_entry_floor_pct: float = 0.0) -> dict:
     base = {"plan_state": "UNAVAILABLE", "entry_reference": None,
             "target_exit_reference": None, "stop_reference": None,
             "estimated_net_target_pct": None, "reward_risk_net": None,
@@ -20,10 +21,11 @@ def build_trade_plan(row: dict, *, target_net_pct: float = 3.0,
         values = (close, trigger, structural, target_net_pct, fee_per_side, slippage_per_side)
         if not all(isfinite(x) for x in values) or min(close, trigger, structural) <= 0:
             return {**base, "plan_reason": "INVALID_LEVELS"}
-        if target_net_pct <= 0 or min(fee_per_side, slippage_per_side) < 0:
+        if target_net_pct <= 0 or min(fee_per_side, slippage_per_side, forward_entry_floor_pct) < 0:
             return {**base, "plan_reason": "INVALID_COST_ASSUMPTIONS"}
-        # A plan is anchored at a *future* trigger, never at an assumed execution.
-        entry = trigger
+        # Preserve historical technical trigger, but never plan a new breakout
+        # entry below the completed close. This is not a live execution quote.
+        entry = max(trigger, close * (1 + forward_entry_floor_pct / 100))
         stop = structural * 0.999
         if not 0 < stop < entry:
             return {**base, "plan_reason": "INVALID_STOP"}
@@ -39,6 +41,9 @@ def build_trade_plan(row: dict, *, target_net_pct: float = 3.0,
         return {**base, "plan_state": "ILLUSTRATIVE_UNTRIGGERED",
                 "plan_reason": "REQUIRES_LIVE_PRICE_AND_CONFIRMATION",
                 "entry_reference": round(entry, 4),
+                "technical_trigger_reference": round(trigger, 4),
+                "entry_above_completed_close": entry > close,
+                "entry_floor_pct": forward_entry_floor_pct,
                 "target_exit_reference": round(target, 4),
                 "stop_reference": round(stop, 4),
                 "estimated_net_target_pct": target_net_pct,
