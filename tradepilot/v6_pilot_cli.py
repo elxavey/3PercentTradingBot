@@ -115,7 +115,8 @@ def write_pilot(payload, output_dir, per_outcome=6):
         },
     }
     json_path = output_dir / "v6_evidence.json"
-    if not json_path.exists():\n        json_path.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if not json_path.exists():
+        json_path.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return rows, csv_path, json_path
 
 
