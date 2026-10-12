@@ -92,7 +92,7 @@ def write_pilot(payload, output_dir, per_outcome=6):
     rows = select_cases(payload, per_outcome)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "pilot_cases.csv"
+    csv_path = output_dir / "v6_pilot_cases.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
@@ -114,15 +114,15 @@ def write_pilot(payload, output_dir, per_outcome=6):
             "notes": "Why this fact could matter; do not use future outcome",
         },
     }
-    json_path = output_dir / "evidence_template.json"
-    json_path.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    json_path = output_dir / "v6_evidence.json"
+    if not json_path.exists():\n        json_path.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return rows, csv_path, json_path
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build retrospective TradePilot v6 pilot")
     parser.add_argument("--input", required=True, help="Path to historical_v5.json")
-    parser.add_argument("--output-dir", default=".cache/v6_pilot")
+    parser.add_argument("--output-dir", default=".cache")
     parser.add_argument("--per-outcome", type=int, default=6)
     args = parser.parse_args(argv)
     payload = json.loads(Path(args.input).read_text(encoding="utf-8-sig"))
