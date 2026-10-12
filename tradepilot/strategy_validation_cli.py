@@ -47,7 +47,9 @@ def simulate(future, trigger, stop, holding=10, fee=0.0025, slippage=0.001):
             "exit": round(px, 4), "bars_held": len(bars)-i}
 
 
-def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, progress=None):
+def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, progress=None, train_fraction=0.7):
+    if not 0.5 <= train_fraction <= 0.9:
+        raise ValueError("train_fraction must be 0.5..0.9")
     fetch = fetcher or get_price_history
     trades, audits, failures = [], [], []
     diagnostics = Counter()
@@ -55,6 +57,7 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, 
     state_counts = Counter()
     per_symbol = {}
     evaluated_bars = 0
+    signal_events = []
     unique_symbols = list(dict.fromkeys(symbols))
     for symbol_index, symbol in enumerate(unique_symbols, 1):
         try:
@@ -105,19 +108,26 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, 
                         diagnostics[name + ":NOT_CONFIRMED"] += 1
                         continue
                     diagnostics[name + ":CONFIRMED"] += 1
+                    event = {"symbol": symbol, "market": "MX" if symbol.endswith(".MX") else "US",
+                             "strategy": name, "signal_date": str(date)[:10], "risk_status": "NOT_EVALUATED"}
+                    signal_events.append(event)
                     plan = row.get("trade_plan") or {}
                     trigger, stop = plan.get("entry_reference"), plan.get("stop_reference")
                     close = row.get("reference_close")
                     if not all(isinstance(x, (float, int)) for x in (trigger, stop, close)):
+                        event["risk_status"] = "INVALID_PLAN"
                         diagnostics[name + ":INVALID_PLAN"] += 1
                         continue
                     audits.append({"symbol": symbol, "strategy": name, "date": str(date)[:10],
                                    "trigger_below_close": trigger < close, "close": close, "trigger": trigger})
                     if (plan.get("reward_risk_net") or 0) < 1:
+                        event["risk_status"] = "RISK_BELOW_ONE"
                         diagnostics[name + ":RISK_BELOW_ONE"] += 1
                         continue
+                    event["risk_status"] = "RISK_ACCEPTED"
                     diagnostics[name + ":RISK_ACCEPTED"] += 1
                     result = simulate(data.iloc[end:end+holding], trigger, stop, holding=holding)
+                    event["outcome"] = result["outcome"]
                     diagnostics[name + ":" + result["outcome"]] += 1
                     trades.append({"symbol": symbol, "market": "MX" if symbol.endswith(".MX") else "US",
                                    "strategy": name, "signal_date": str(date)[:10], **result})
@@ -136,7 +146,25 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, 
                 "outcomes": dict(Counter(t["outcome"] for t in subset)),
                 "target_rate_executed_pct": round(100*sum(t["outcome"]=="TARGET" for t in executed)/len(executed),2) if executed else None,
                 "mean_net_pct": round(sum(t["net_pct"] for t in executed)/len(executed),3) if executed else None}
+    dates = sorted(set(e["signal_date"] for e in signal_events))
+    cutoff = dates[min(len(dates)-1, max(0, int(len(dates)*train_fraction)-1))] if dates else None
+    def split_metrics(period):
+        events = [e for e in signal_events if cutoff is not None and
+                  ((e["signal_date"] <= cutoff) if period == "development" else (e["signal_date"] > cutoff))]
+        executed = [t for t in trades if "net_pct" in t and
+                    ((t["signal_date"] <= cutoff) if period == "development" else (t["signal_date"] > cutoff))]
+        return {"confirmed_signals": len(events),
+                "risk_accepted": sum(e["risk_status"] == "RISK_ACCEPTED" for e in events),
+                "executed": len(executed),
+                "targets": sum(t["outcome"] == "TARGET" for t in executed),
+                "stops": sum(t["outcome"] == "STOP" for t in executed),
+                "mean_net_pct": round(sum(t["net_pct"] for t in executed)/len(executed), 4) if executed else None}
+    holdout = {"split_method": "CHRONOLOGICAL_SIGNAL_DATES_DESCRIPTIVE_ONLY",
+               "cutoff_signal_date": cutoff, "development": split_metrics("development"),
+               "holdout": split_metrics("holdout"),
+               "warning": "NOT_TRUE_OUT_OF_SAMPLE: no train-only tuning; tickers selected using recent radar."}
     return {"state": "HISTORICAL_RESEARCH_ONLY", "summary": summary,
+            "chronological_split": holdout, "signal_events": signal_events,
             "diagnostics": {"signal_states": dict(state_counts), "rejection_reasons": dict(rejection_reasons),
                             "funnel": dict(diagnostics), "evaluated_bars": evaluated_bars,
                             "by_symbol": per_symbol},
@@ -144,7 +172,7 @@ def run_backtest(symbols, *, lookback=180, holding=10, stride=10, fetcher=None, 
                             "trigger_below_close": sum(x["trigger_below_close"] for x in audits),
                             "examples": audits[:50]}, "trades": trades, "failures": failures,
             "limitations": ["NEXT_SESSION_ENTRY", "STOP_FIRST_IF_AMBIGUOUS",
-                            "NOT_OUT_OF_SAMPLE", "OVERLAPPING_SIGNALS_POSSIBLE",
+                            "DESCRIPTIVE_HOLDOUT_NOT_PROVEN_OUT_OF_SAMPLE", "OVERLAPPING_SIGNALS_POSSIBLE",
                             "NO_LIVE_QUOTES", "NO_PROFITABILITY_CLAIM"]}
 
 
@@ -156,10 +184,13 @@ def main(argv=None):
     p.add_argument("--lookback", type=int, default=180)
     p.add_argument("--holding", type=int, default=10)
     p.add_argument("--stride", type=int, default=10)
+    p.add_argument("--train-fraction", type=float, default=0.7)
     p.add_argument("--output", default=".cache/strategy_validation.json")
     a = p.parse_args(argv)
     if not 1 <= a.max_symbols <= 1000:
         p.error("--max-symbols must be 1..1000")
+    if not 0.5 <= a.train_fraction <= 0.9:
+        p.error("--train-fraction must be 0.5..0.9")
     if not 30 <= a.lookback <= 500 or not 1 <= a.holding <= 30 or not 1 <= a.stride <= 60:
         p.error("Invalid lookback, holding or stride")
     symbols = list(a.symbols)
@@ -170,11 +201,13 @@ def main(argv=None):
     if not symbols:
         p.error("Supply --symbols or --symbols-file")
     result = run_backtest(symbols, lookback=a.lookback, holding=a.holding, stride=a.stride,
+                          train_fraction=a.train_fraction,
                           progress=lambda i, n, sym, windows: print(f"[{i}/{n}] {sym}: {windows} windows", flush=True))
     path = Path(a.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
-    print(json.dumps({"summary": result["summary"], "diagnostics": result["diagnostics"], "entry_audit": result["entry_audit"],
+    print(json.dumps({"summary": result["summary"], "chronological_split": result["chronological_split"],
+                      "diagnostics": result["diagnostics"], "entry_audit": result["entry_audit"],
                       "failures": len(result["failures"]), "output": str(path)}, indent=2))
     return 0
 
