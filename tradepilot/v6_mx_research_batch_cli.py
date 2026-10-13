@@ -66,6 +66,8 @@ def crawl_pdfs(symbol, start_url, fetcher, max_pages=12):
             continue
         visited.add(url)
         try:
+            if urlparse(url).path.lower().endswith((".mp4", ".mov", ".zip", ".xlsx", ".jpg", ".png")):
+                continue
             html = fetcher(url).decode("utf-8", errors="replace")
             parser = PageLinks()
             parser.feed(html)
@@ -78,6 +80,7 @@ def crawl_pdfs(symbol, start_url, fetcher, max_pages=12):
                     pdfs.add(link)
                 elif (depth < 2 and parsed.hostname == origin and
                       any(h in (parsed.path + "?" + parsed.query).lower() for h in hints)
+                      and not parsed.path.lower().endswith((".mp4", ".mov", ".zip", ".xlsx", ".jpg", ".png"))
                       and link not in visited and len(queue) < 60):
                     queue.append((link, depth + 1))
         except Exception as exc:
