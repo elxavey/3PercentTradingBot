@@ -8,7 +8,8 @@ import csv
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
+from html.parser import HTMLParser
 
 from tradepilot.v6_mx_pdf_research_cli import (
     discover_pdf_links, fetch, pdf_candidates, trusted_url, COLUMNS,
@@ -40,33 +41,74 @@ def targeted_links(symbol, urls, limit=4):
     return matched[:limit]
 
 
+class PageLinks(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.hrefs = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            href = dict(attrs).get("href")
+            if href:
+                self.hrefs.append(href)
+
+
+def crawl_pdfs(symbol, start_url, fetcher, max_pages=12):
+    """Bounded issuer-only archive crawl; never follows off-domain HTML links."""
+    origin = urlparse(start_url).hostname
+    queue = [(start_url, 0)]
+    visited, pdfs, failures = set(), set(), []
+    hints = ("invest", "report", "informe", "trimestr", "quarter",
+             "financ", "resultado", "2022", "2023", "histor", "archivo")
+    while queue and len(visited) < max_pages:
+        url, depth = queue.pop(0)
+        if url in visited:
+            continue
+        visited.add(url)
+        try:
+            html = fetcher(url).decode("utf-8", errors="replace")
+            parser = PageLinks()
+            parser.feed(html)
+            for href in parser.hrefs:
+                link = urljoin(url, href)
+                parsed = urlparse(link)
+                if not trusted_url(link):
+                    continue
+                if parsed.path.lower().endswith(".pdf"):
+                    pdfs.add(link)
+                elif (depth < 2 and parsed.hostname == origin and
+                      any(h in (parsed.path + "?" + parsed.query).lower() for h in hints)
+                      and link not in visited and len(queue) < 60):
+                    queue.append((link, depth + 1))
+        except Exception as exc:
+            failures.append(f"{symbol}: {url}: {type(exc).__name__}: {exc}")
+    return sorted(pdfs), failures
+
+
 def research(fetcher=fetch, pdf_reader=pdf_candidates, max_pdfs=4):
     leads, discovered, errors = [], [], []
     for symbol in SYMBOLS:
         archive = ARCHIVES[symbol]
-        try:
-            page = fetcher(archive).decode("utf-8", errors="replace")
-            links = discover_pdf_links(page, archive)
-            selected = targeted_links(symbol, links, max_pdfs)
-            for url in links:
-                discovered.append({
-                    "symbol": symbol, "url": url,
-                    "period_match": "YES" if url in selected else "NO",
-                    "status": "DISCOVERED_ONLY",
-                    "note": "PDF URL is a lead, not publication-date or metric verification",
-                })
-            if not selected:
-                errors.append(f"{symbol}: no directly linked PDF matched target quarter; manual archive navigation needed")
-            for url in selected:
-                try:
-                    data = fetcher(url)
-                    if not data.startswith(b"%PDF-"):
-                        raise ValueError("not a PDF")
-                    leads.extend(pdf_reader(data, symbol, url))
-                except Exception as exc:
-                    errors.append(f"{symbol}: {url}: {type(exc).__name__}: {exc}")
-        except Exception as exc:
-            errors.append(f"{symbol}: archive: {type(exc).__name__}: {exc}")
+        links, crawl_errors = crawl_pdfs(symbol, archive, fetcher)
+        errors.extend(crawl_errors)
+        selected = targeted_links(symbol, links, max_pdfs)
+        for url in links:
+            discovered.append({
+                "symbol": symbol, "url": url,
+                "period_match": "YES" if url in selected else "NO",
+                "status": "DISCOVERED_ONLY",
+                "note": "PDF URL is a lead, not publication-date or metric verification",
+            })
+        if not selected:
+            errors.append(f"{symbol}: no official PDF URL matched quarter after bounded crawl; manual review required")
+        for url in selected:
+            try:
+                data = fetcher(url)
+                if not data.startswith(b"%PDF-"):
+                    raise ValueError("not a PDF")
+                leads.extend(pdf_reader(data, symbol, url))
+            except Exception as exc:
+                errors.append(f"{symbol}: {url}: {type(exc).__name__}: {exc}")
     return leads, discovered, errors
 
 
