@@ -1,0 +1,7 @@
+symbol,signal_date,report_period,document_url,landing_url,document_type,publication_date,publication_evidence,review_status,notes
+ALSEA.MX,2023-08-15,2023-Q2,https://www.alsea.net/uploads/es/press_news/alsea_reporta_ventas_26-07-2023.pdf,https://www.alsea.net/inversionistas/2023.html,OFFICIAL_RESULTS_RELEASE,2023-07-26,DATE_PRINTED_IN_PDF,PENDING_NUMERIC_REVIEW,Issuer report includes Q2 2023 and Q2 2022 comparisons; confirm accounting basis and CFO separately
+ALSEA.MX,2023-08-15,2023-Q2,https://www.alsea.net/uploads/es/documents/alsea_reporte_trimestral_bmv_sific/alsea_reporte_trimestral_bmv_sific_2023_0215dd.pdf?v=2017-10-30-12-10-00,https://www.alsea.net/inversionistas/2023.html,OFFICIAL_BMV_REPORT,,,PENDING_DATE_REVIEW,Do not infer publication date from query string
+BIMBOA.MX,2023-11-30,2023-Q3,,https://grupobimbo.com/en/investors/events/3q23,OFFICIAL_RESULTS_EVENT,2023-10-26,EVENT_PAGE_DATE,PENDING_DOCUMENT_LINK,Event lists Results Report and Results BMV; resolve direct PDF from HTML before numeric review
+LIVEPOLC-1.MX,2022-11-28,2022-Q3,,,OFFICIAL_RESULTS_REPORT,,,SOURCE_NOT_LOCATED,Find issuer quarterly report and original release date
+CHDRAUIB.MX,2024-01-16,2023-Q3,,,OFFICIAL_RESULTS_REPORT,,,SOURCE_NOT_LOCATED,Find issuer quarterly report and original release date
+PINFRA.MX,2023-01-10,2022-Q3,,,OFFICIAL_RESULTS_REPORT,,,SOURCE_NOT_LOCATED,Find issuer quarterly report and original release date
