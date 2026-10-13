@@ -9,6 +9,7 @@ import csv
 import json
 from pathlib import Path
 
+from tradepilot.v6_alpek_cashflow import operating_cash_flow_rows, evidence_details
 from tradepilot.v6_mx_financials_cli import (
     INPUT_COLUMNS, OUTPUT_COLUMNS, validated_observations, mx_trends,
 )
@@ -25,7 +26,7 @@ def run(cases, observations):
     selected = [case for case in cases if case["symbol"] == "ALPEKA.MX"]
     if len(selected) != 1:
         raise ValueError("Expected exactly one ALPEKA.MX pilot case")
-    verified, errors = validated_observations(observations)
+    verified, errors = validated_observations(observations + operating_cash_flow_rows())
     if errors:
         raise ValueError("; ".join(errors))
     trends = mx_trends(selected, verified)
@@ -49,10 +50,8 @@ def main(argv=None):
     summary["source"] = args.source
     summary["source_document"] = "https://www.alpek.com/wp-content/uploads/2022/10/Alpek-BMV-3Q22.pdf"
     summary["source_page"] = 31
-    summary["known_limitation"] = (
-        "The BMV report's 'Flujo' is EBITDA, not operating cash flow. "
-        "Operating cash flow is unverified, so quality_score MUST remain empty."
-    )
+    summary["cash_flow_evidence"] = evidence_details()
+    summary["known_limitation"] = "Exploratory; upload-month dates are conservative proxies, not verified filing timestamps."
     Path(args.prefix + "_summary.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print("ALPEK 3Q22/3Q21:")
