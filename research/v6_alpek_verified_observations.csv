@@ -1,0 +1,5 @@
+symbol,metric,period_start,period_end,published_at,value,currency,scale,source_url,source_page,verification_status
+ALPEKA.MX,revenue,2022-07-01,2022-09-30,2022-10-20,59750,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/10/Alpek-BMV-3Q22.pdf,31,VERIFIED
+ALPEKA.MX,revenue,2021-07-01,2021-09-30,2022-10-20,41652,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/10/Alpek-BMV-3Q22.pdf,31,VERIFIED
+ALPEKA.MX,net_income,2022-07-01,2022-09-30,2022-10-20,2690,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/10/Alpek-BMV-3Q22.pdf,31,VERIFIED
+ALPEKA.MX,net_income,2021-07-01,2021-09-30,2022-10-20,2849,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/10/Alpek-BMV-3Q22.pdf,31,VERIFIED
