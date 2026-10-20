@@ -1,4 +1,5 @@
 import csv
+import gc
 import json
 import sqlite3
 from contextlib import closing
@@ -41,7 +42,10 @@ class ScannerBridgeTests(unittest.TestCase):
             _,selected,_=simulate(rows,"2026-10-19")
             self.assertEqual(selected[0]["symbol"],"XYZ")
             with closing(sqlite3.connect(db)) as conn:
-                self.assertEqual(conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0],1)
+                with closing(conn.execute("SELECT COUNT(*) FROM signals")) as cursor:
+                    self.assertEqual(cursor.fetchone()[0],1)
+            # Windows can retain SQLite file handles until pending cursors are finalized.
+            gc.collect()
 
     def test_unknown_table_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
