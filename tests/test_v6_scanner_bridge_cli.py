@@ -1,6 +1,7 @@
 import csv
 import json
 import sqlite3
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,7 +29,7 @@ class ScannerBridgeTests(unittest.TestCase):
     def test_sqlite_read_only_and_explicit_mapping(self):
         with tempfile.TemporaryDirectory() as folder:
             db=Path(folder)/"scanner.sqlite"
-            with sqlite3.connect(db) as conn:
+            with closing(sqlite3.connect(db)) as conn:
                 conn.execute("CREATE TABLE signals (ticker TEXT, market TEXT, strategy TEXT, signal_status TEXT, reference_date TEXT, close REAL, currency TEXT, opportunity_score REAL, entry REAL, target REAL, stop REAL)")
                 conn.execute("INSERT INTO signals VALUES ('XYZ','US','PULLBACK','CONFIRMED','2026-10-19',100,'USD',85,101,105,98)")
             self.assertIn("signals",schema(db))
@@ -38,13 +39,13 @@ class ScannerBridgeTests(unittest.TestCase):
             rows=normalize(source_rows(db_path=str(db),table="signals"),mapping)
             _,selected,_=simulate(rows,"2026-10-19")
             self.assertEqual(selected[0]["symbol"],"XYZ")
-            with sqlite3.connect(db) as conn:
+            with closing(sqlite3.connect(db)) as conn:
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0],1)
 
     def test_unknown_table_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             db=Path(folder)/"scanner.sqlite"
-            with sqlite3.connect(db):
+            with closing(sqlite3.connect(db)):
                 pass
             with self.assertRaisesRegex(ValueError,"Unknown SQLite table"):
                 source_rows(db_path=str(db),table="does_not_exist")
