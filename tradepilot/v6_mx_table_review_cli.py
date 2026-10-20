@@ -17,8 +17,7 @@ COLUMNS = ("symbol", "report_period", "signal_date", "published_at",
            "publication_evidence", "source_url", "page", "metric",
            "row_text", "previous_row", "next_row", "numeric_tokens",
            "candidate_status", "review_note")
-NUMERIC = re.compile(r"(?<![A-Za-z])\\(?!)") if False else re.compile(
-    r"(?<![A-Za-z])[-−]?(?:\\d{1,3}(?:[, ]\\d{3})+|\\d+)(?:\\.\\d+)?%?")
+NUMERIC = re.compile(r"(?<![A-Za-z])[-−]?(?:[0-9]{1,3}(?:[, ][0-9]{3})+|[0-9]+)(?:[.][0-9]+)?%?")
 # Deliberately preserve text as printed; no numeric interpretation without
 # identifying year/quarter columns, consolidation, currency and scaling.
 
