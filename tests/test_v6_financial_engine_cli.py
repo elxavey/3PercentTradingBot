@@ -26,7 +26,8 @@ class GenericEngineTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             output=Path(tmp)/"trends.csv"
             write_csv(str(output),[{key:row.get(key,"") for key in TREND_COLUMNS} for row in trends],TREND_COLUMNS)
-            self.assertEqual(len(list(csv.DictReader(output.open(encoding="utf-8")))),3)
+            with output.open(encoding="utf-8") as handle:
+                self.assertEqual(len(list(csv.DictReader(handle))),3)
         self.assertTrue(all(set(row)==set(COVERAGE_COLUMNS) for row in coverage))
 
     def test_identity_guard(self):
