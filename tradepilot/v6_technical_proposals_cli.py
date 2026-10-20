@@ -118,7 +118,7 @@ def proposals(db_path, as_of, top=20, fee_rate=0.003, net_target=0.03):
                         name,stop = pattern
                         entry = bars[-1]["close"]
                         # Buy and sell fee modeled as fraction of notional on each side.
-                        target = entry * (1 + net_target + fee_rate) / (1 - fee_rate)
+                        target = entry * (1 + fee_rate) * (1 + net_target) / (1 - fee_rate)
                         if not 0 < stop < entry < target:
                             result["reason"] = "INVALID_STRUCTURAL_STOP"
                         else:
