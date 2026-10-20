@@ -36,6 +36,15 @@ class ActualScannerReportTests(unittest.TestCase):
         self.assertEqual(rows,[])
         self.assertEqual(summary["status"],"ABSTAIN")
 
+    def test_preclose_scanner_run_abstains(self):
+        with closing(sqlite3.connect(self.db)) as conn:
+            conn.execute("UPDATE scan_runs SET finished_at_utc=? WHERE id=1",("2026-10-19T15:34:38Z",))
+            conn.commit()
+        rows,summary=report(self.db,"2026-10-19")
+        self.assertEqual(rows,[])
+        self.assertEqual(summary["status"],"ABSTAIN")
+        self.assertEqual(summary["excluded"]["PRE_CLOSE_OR_NON_SESSION_RUN"],2)
+
     def test_invalid_limit_rejected(self):
         with self.assertRaisesRegex(ValueError,"limit"):
             report(self.db,"2026-10-19",limit=0)
