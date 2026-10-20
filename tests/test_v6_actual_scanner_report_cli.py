@@ -16,9 +16,9 @@ class ActualScannerReportTests(unittest.TestCase):
             conn.execute("CREATE TABLE scan_candidates (scan_run_id INTEGER, symbol TEXT, exchange_code TEXT, currency TEXT, quality_pass INTEGER, opportunity_score REAL, observed_at_utc TEXT, price_source TEXT, price REAL)")
             conn.execute("INSERT INTO scan_runs VALUES (1,'SUCCEEDED','2026-10-19T22:00:00Z')")
             conn.executemany("INSERT INTO scan_candidates VALUES (?,?,?,?,?,?,?,?,?)",[
-                (1,"AUTO1","NASDAQ","USD",1,81,"2026-10-19T21:00:00Z","provider",100),
-                (1,"AUTO2","NYSE","USD",1,90,"2026-10-19T21:00:00Z","provider",50),
-                (1,"REJECT","NYSE","USD",0,99,"2026-10-19T21:00:00Z","provider",50)])
+                (1,"AUTO1","US","USD",1,81,"2026-10-19T21:00:00Z","provider",100),
+                (1,"AUTO2","US","USD",1,90,"2026-10-19T21:00:00Z","provider",50),
+                (1,"REJECT","US","USD",0,99,"2026-10-19T21:00:00Z","provider",50)])
             conn.commit()
 
     def tearDown(self):
