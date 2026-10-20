@@ -2,6 +2,7 @@
 import argparse
 from tradepilot.v6_financial_evidence_cli import main as evidence_main
 from tradepilot.v6_financial_engine_cli import main as engine_main
+from tradepilot.v6_financial_source_queue_cli import main as source_queue_main
 
 
 def main(argv=None):
@@ -11,6 +12,7 @@ def main(argv=None):
     parser.add_argument("--direct",default="research/v6_financial_evidence.csv")
     parser.add_argument("--ytd",default="research/v6_financial_ytd.csv")
     args=parser.parse_args(argv)
+    source_queue_main(["--cases",args.cases])
     evidence_main(["--direct",args.direct,"--ytd",args.ytd])
     engine_main(["--cases",args.cases,"--us-trends",args.us_trends,
                  "--mx-observations",".cache/v6_financial_evidence_eligible.csv"])
