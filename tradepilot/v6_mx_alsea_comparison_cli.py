@@ -17,11 +17,11 @@ COLUMNS = ("symbol","metric","basis","period_latest","period_previous",
            "source_url","source_page","published_at","signal_date",
            "verification_status","note")
 AUDIT_COLUMNS = ("symbol","metric","basis","status","reason","source_page")
-AMOUNT = r"\\$?\\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)"
+AMOUNT = r"\$?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)"
 ROW = re.compile(
-    r"^\\s*(Ventas Netas|Utilidad Neta)\\s+"
-    + AMOUNT + r"\\s+" + AMOUNT + r"\\s+(-?\\d+(?:\\.\\d+)?)%\\s+"
-    + AMOUNT + r"\\s+" + AMOUNT + r"\\s+(-?\\d+(?:\\.\\d+)?)%\\s*$",
+    r"^\s*(Ventas Netas|Utilidad Neta)\s+"
+    + AMOUNT + r"\s+" + AMOUNT + r"\s+(-?\d+(?:\.\d+)?)%\s+"
+    + AMOUNT + r"\s+" + AMOUNT + r"\s+(-?\d+(?:\.\d+)?)%\s*$",
     re.I,
 )
 METRIC = {"ventas netas":"revenue","utilidad neta":"net_income"}
@@ -106,7 +106,7 @@ def main(argv=None):
              "verified":0,"cfo_status":"MISSING_SOURCE","scores_changed":False}
     p=Path(args.prefix+"_summary.json")
     p.parent.mkdir(parents=True,exist_ok=True)
-    p.write_text(json.dumps(summary,indent=2)+"\\n",encoding="utf-8")
+    p.write_text(json.dumps(summary,indent=2)+"\n",encoding="utf-8")
     print(f"ALSEA comparisons: {len(candidates)} candidates; VERIFIED=0; CFO missing")
 
 
