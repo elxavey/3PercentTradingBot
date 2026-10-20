@@ -13,7 +13,8 @@ class DailyCloseTests(unittest.TestCase):
         rows=[candidate("ZZZ",score="40"),candidate("AAA",score="90"),
               candidate("BBB",market="MX",score="70"),candidate("CCC",status="WATCHING")]
         evaluated,selected,summary=simulate(rows,"2026-10-19",top_per_market=1)
-        self.assertEqual([r["symbol"] for r in selected],["AAA","BBB"])
+        self.assertEqual({r["symbol"] for r in selected},{"AAA","BBB"})
+        self.assertEqual({r["market"]:r["rank"] for r in selected},{"US":1,"MX":1})
         self.assertEqual(summary["scanner_rows"],4)
         self.assertEqual(summary["classifications"]["WATCH"],1)
 
