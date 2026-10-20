@@ -32,6 +32,7 @@ class ScannerBridgeTests(unittest.TestCase):
             with closing(sqlite3.connect(db)) as conn:
                 conn.execute("CREATE TABLE signals (ticker TEXT, market TEXT, strategy TEXT, signal_status TEXT, reference_date TEXT, close REAL, currency TEXT, opportunity_score REAL, entry REAL, target REAL, stop REAL)")
                 conn.execute("INSERT INTO signals VALUES ('XYZ','US','PULLBACK','CONFIRMED','2026-10-19',100,'USD',85,101,105,98)")
+                conn.commit()
             self.assertIn("signals",schema(db))
             mapping={k:k for k in ("symbol","market","strategy","signal_status","reference_date",
                                   "close","currency","opportunity_score","entry","target","stop")}
