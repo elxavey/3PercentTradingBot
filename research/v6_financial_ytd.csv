@@ -1,0 +1,5 @@
+symbol,metric,fiscal_year,quarter,period_end,value,currency,scale,source_url,source_page,published_at,publication_evidence,accounting_basis,consolidation,verification_status
+ALPEKA.MX,operating_cash_flow,2022,2,2022-06-30,7405,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/08/Alpek-2Q22-Unaudited-Consolidated-Financial-Statements.pdf,3,2022-08-31,ARCHIVE_MONTH_PROXY,IFRS,CONSOLIDATED,PENDING_REVIEW
+ALPEKA.MX,operating_cash_flow,2022,3,2022-09-30,9948,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/11/Alpek-3Q22-Unaudited-Consolidated-Financial-Statements.pdf,3,2022-11-30,ARCHIVE_MONTH_PROXY,IFRS,CONSOLIDATED,PENDING_REVIEW
+ALPEKA.MX,operating_cash_flow,2021,2,2021-06-30,6755,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/08/Alpek-2Q22-Unaudited-Consolidated-Financial-Statements.pdf,3,2022-08-31,ARCHIVE_MONTH_PROXY,IFRS,CONSOLIDATED,PENDING_REVIEW
+ALPEKA.MX,operating_cash_flow,2021,3,2021-09-30,7378,MXN,1000000,https://www.alpek.com/wp-content/uploads/2022/11/Alpek-3Q22-Unaudited-Consolidated-Financial-Statements.pdf,3,2022-11-30,ARCHIVE_MONTH_PROXY,IFRS,CONSOLIDATED,PENDING_REVIEW
