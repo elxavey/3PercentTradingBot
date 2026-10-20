@@ -7,6 +7,7 @@ import argparse
 import csv
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from tradepilot.v6_daily_close_simulation_cli import REQUIRED, read as read_csv, simulate, COLUMNS
@@ -17,7 +18,7 @@ SCANNER_COLUMNS=tuple(REQUIRED)
 
 
 def schema(db):
-    with sqlite3.connect(Path(db).resolve().as_uri()+"?mode=ro",uri=True) as conn:
+    with closing(sqlite3.connect(Path(db).resolve().as_uri()+"?mode=ro",uri=True)) as conn:
         tables=conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
         return {name:[row[1] for row in conn.execute('PRAGMA table_info("'+name.replace('"','""')+'")')] for (name,) in tables}
 
