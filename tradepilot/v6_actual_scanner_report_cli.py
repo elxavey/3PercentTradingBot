@@ -4,7 +4,8 @@ import json
 import sqlite3
 from collections import Counter
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, time, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from tradepilot.v6_stop_target_cli import write_csv
@@ -32,7 +33,6 @@ def _date(value):
 
 
 def report(db_path,as_of,limit=3,run_id=None):
-    from datetime import date
     requested=date.fromisoformat(as_of)
     if limit<1:
         raise ValueError("limit must be positive")
@@ -55,6 +55,10 @@ def report(db_path,as_of,limit=3,run_id=None):
     freshness="RUN_UTC_DATE_MATCH" if run_day==requested else "STALE_OR_UNDATED_RUN"
     eligible=[]
     errors=Counter()
+    # Conservative weekday regular-session boundaries, including DST via zoneinfo.
+    # A completed scan after close is necessary, not sufficient, to certify EOD bars.
+    close_windows={"US":("America/New_York",time(16,0)),
+                   "MX":("America/Mexico_City",time(15,0))}
     for row in candidates:
         try:
             import math
@@ -80,6 +84,16 @@ def report(db_path,as_of,limit=3,run_id=None):
         if not observation or observation.date()!=requested:
             errors["STALE_OR_UNDATED_OBSERVATION"]+=1
             continue
+        exchange=str(row['exchange_code']).upper()
+        if exchange not in close_windows:
+            errors['UNKNOWN_EXCHANGE_CLOSE_WINDOW']+=1
+            continue
+        tz_name,close_clock=close_windows[exchange]
+        local_finish=finish.astimezone(ZoneInfo(tz_name)) if finish else None
+        if (not local_finish or local_finish.date()!=requested or
+                local_finish.weekday()>=5 or local_finish.time()<close_clock):
+            errors['PRE_CLOSE_OR_NON_SESSION_RUN']+=1
+            continue
         eligible.append(row)
     eligible.sort(key=lambda r:(-float(r["opportunity_score"]),str(r["symbol"])))
     # Exchange codes are not mapped to markets without an authoritative mapping.
@@ -93,16 +107,16 @@ def report(db_path,as_of,limit=3,run_id=None):
             observed_at_utc=row.get("observed_at_utc",""),
             scan_run_id=run["id"],scan_status=run.get("status",""),
             run_finished_at_utc=run.get("finished_at_utc",""),
-            freshness="UTC_DATE_MATCH_ONLY",setup_status="UNVERIFIED",
+            freshness="POST_REGULAR_CLOSE_RUN_ONLY",setup_status="UNVERIFIED",
             entry="",target="",stop="",
-            reason="Scanner quality passed; strategy setup and exchange-close bar NOT validated"))
+            reason="Scanner quality passed after regular close; EOD bar and strategy setup NOT validated"))
     summary=dict(as_of=as_of,source="scanner SQLite read-only",run_id=run["id"],
         run_status=run.get("status"),run_finished_at_utc=run.get("finished_at_utc"),
         scanner_candidates=len(candidates),eligible=len(eligible),
         selected=len(output),excluded=dict(errors),
-        status="RESEARCH_ONLY_UNVERIFIED_SETUP" if output else "ABSTAIN",
+        status="POST_CLOSE_SCAN_UNVERIFIED_BAR" if output else "ABSTAIN",
         notes=["No ticker was selected manually",
-               "UTC run/observation date is not proof of exchange-local market close",
+               "Regular close time checked per exchange and DST; holidays, half-days, and final EOD bars not independently verified",
                "Opportunity score is not a calibrated probability",
                "No strategy confirmation, entry, target or stop is invented",
                "Top ranked globally; exchange-to-market mapping not inferred",
