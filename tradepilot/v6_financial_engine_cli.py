@@ -17,7 +17,8 @@ from tradepilot.v6_stop_target_cli import write_csv
 
 COVERAGE_COLUMNS = ("case_id","symbol","market","signal_date","metric",
                     "status","latest_period_end","previous_period_end",
-                    "latest_filed","previous_filed","reason")
+                    "latest_filed","previous_filed","currency","scale",
+                    "source_url_latest","source_url_previous","reason")
 REQUIRED_CASE_FIELDS = ("case_id","symbol","market","signal_date")
 ALLOWED_MARKETS = ("US","MX")
 
@@ -66,15 +67,19 @@ def aggregate(cases, us_trends, mx_source_rows):
     trends = mx_rows + selected_us
     quality = score_cases(cases, trends)
     coverage=[]
+    market_by_case={c["case_id"]:c["market"] for c in cases}
     for row in trends:
         coverage.append({
             "case_id":row["case_id"],"symbol":row["symbol"],
-            "market":next(c["market"] for c in cases if c["case_id"]==row["case_id"]),
+            "market":market_by_case[row["case_id"]],
             "signal_date":row["signal_date"],"metric":row["metric"],
             "status":row["status"],"latest_period_end":row.get("latest_period_end",""),
             "previous_period_end":row.get("previous_period_end",""),
             "latest_filed":row.get("latest_filed",""),
             "previous_filed":row.get("previous_filed",""),
+            "currency":row.get("currency",""),"scale":row.get("scale",""),
+            "source_url_latest":row.get("source_url_latest",""),
+            "source_url_previous":row.get("source_url_previous",""),
             "reason":row.get("note",""),
         })
     summary={
@@ -109,7 +114,11 @@ def main(argv=None):
     us_rows=read(us_path) if us_path.exists() else []
     mx_rows=read(mx_path) if mx_path.exists() else []
     trends,quality,coverage,summary=aggregate(cases,us_rows,mx_rows)
-    write_csv(args.prefix+"_trends.csv",trends,TREND_COLUMNS)
+    # Normalize provider-specific fields for the shared trend schema. Preserve
+    # extra MX provenance in the coverage report instead of dropping its audit trail.
+    write_csv(args.prefix+"_trends.csv",
+              [{field: row.get(field,"") for field in TREND_COLUMNS} for row in trends],
+              TREND_COLUMNS)
     write_csv(args.prefix+"_quality.csv",quality,QUALITY_COLUMNS)
     write_csv(args.prefix+"_coverage.csv",coverage,COVERAGE_COLUMNS)
     path=Path(args.prefix+"_summary.json")
