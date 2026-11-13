@@ -116,6 +116,10 @@ def save_scan(
         "seconds": pre.get("seconds", 0),
         "history_cache_hits": pre.get("history_cache_hits", 0),
     })
+    # The universe pre-screen can return exclusions as a pandas DataFrame.
+    # Normalize only this telemetry field; keep the stored JSON schema as a list.
+    if hasattr(excluded, "to_json") and type(excluded).__name__ == "DataFrame":
+        excluded = json.loads(excluded.to_json(orient="records", date_format="iso"))
     serialized_excluded = _json(excluded)
     serialized_timing = _json(timing)
     discovered_count = int((discovery or {}).get("discovered", pre.get("total", 0)))
