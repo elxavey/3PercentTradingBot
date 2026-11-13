@@ -46,6 +46,32 @@ class WorkerTests(unittest.TestCase):
             scan_id = conn.execute("SELECT id FROM scan_runs WHERE job_run_id=?", (job_id,)).fetchone()[0]
         self.assertEqual(get_scan(scan_id, db_path=self.db).results[0]["ticker"], "AAPL")
 
+    def test_dataframe_exclusions_persist_and_roundtrip(self):
+        import pandas as pd
+
+        def scan_with_dataframe(**kwargs):
+            outcome = fake_scan(**kwargs)
+            outcome.universe_result["excluded"] = pd.DataFrame([
+                {"ticker": "BAD", "reason": "LOW_LIQUIDITY", "volume": None},
+                {"ticker": "OLD", "reason": "SHORT_HISTORY", "volume": 0},
+            ])
+            return outcome
+
+        code, job_id = execute_once(
+            db_path=self.db, scheduled_for_utc=SLOT, scanner=scan_with_dataframe
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(self.jobs()[0][1], "SUCCEEDED")
+        with database_connection(self.db) as conn:
+            scan_id = conn.execute(
+                "SELECT id FROM scan_runs WHERE job_run_id=?", (job_id,)
+            ).fetchone()[0]
+        stored = get_scan(scan_id, db_path=self.db)
+        self.assertEqual(stored.excluded, [
+            {"ticker": "BAD", "reason": "LOW_LIQUIDITY", "volume": None},
+            {"ticker": "OLD", "reason": "SHORT_HISTORY", "volume": 0},
+        ])
+
     def test_duplicate_slot_skipped_after_success(self):
         execute_once(db_path=self.db, scheduled_for_utc=SLOT, scanner=fake_scan)
         code, job = execute_once(db_path=self.db, scheduled_for_utc=SLOT, scanner=fake_scan)
