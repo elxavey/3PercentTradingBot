@@ -116,10 +116,16 @@ def save_scan(
         "seconds": pre.get("seconds", 0),
         "history_cache_hits": pre.get("history_cache_hits", 0),
     })
-    # The universe pre-screen can return exclusions as a pandas DataFrame.
-    # Normalize only this telemetry field; keep the stored JSON schema as a list.
+    # Excluded pre-screen rows may contain raw pandas price history.
+    # Persist exclusion metadata only; raw price history must not enter SQLite.
     if hasattr(excluded, "to_json") and type(excluded).__name__ == "DataFrame":
         excluded = json.loads(excluded.to_json(orient="records", date_format="iso"))
+    if isinstance(excluded, list):
+        excluded = [
+            {key: value for key, value in row.items() if key != "history"}
+            if isinstance(row, dict) else row
+            for row in excluded
+        ]
     serialized_excluded = _json(excluded)
     serialized_timing = _json(timing)
     discovered_count = int((discovery or {}).get("discovered", pre.get("total", 0)))
