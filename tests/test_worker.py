@@ -72,6 +72,32 @@ class WorkerTests(unittest.TestCase):
             {"ticker": "OLD", "reason": "SHORT_HISTORY", "volume": 0},
         ])
 
+    def test_excluded_row_with_price_history_persists_metadata_only(self):
+        import pandas as pd
+
+        def scan_with_excluded_history(**kwargs):
+            outcome = fake_scan(**kwargs)
+            outcome.universe_result["excluded"] = [{
+                "ticker": "BAD", "passed": False, "reason": "liquidity",
+                "history": pd.DataFrame({"Close": [10.0], "Volume": [100]}),
+                "history_cache_hit": False, "seconds": 0.02,
+            }]
+            return outcome
+
+        code, job_id = execute_once(
+            db_path=self.db, scheduled_for_utc=SLOT,
+            scanner=scan_with_excluded_history,
+        )
+        self.assertEqual(code, 0)
+        with database_connection(self.db) as conn:
+            scan_id = conn.execute(
+                "SELECT id FROM scan_runs WHERE job_run_id=?", (job_id,)
+            ).fetchone()[0]
+        self.assertEqual(get_scan(scan_id, db_path=self.db).excluded, [{
+            "ticker": "BAD", "passed": False, "reason": "liquidity",
+            "history_cache_hit": False, "seconds": 0.02,
+        }])
+
     def test_duplicate_slot_skipped_after_success(self):
         execute_once(db_path=self.db, scheduled_for_utc=SLOT, scanner=fake_scan)
         code, job = execute_once(db_path=self.db, scheduled_for_utc=SLOT, scanner=fake_scan)
